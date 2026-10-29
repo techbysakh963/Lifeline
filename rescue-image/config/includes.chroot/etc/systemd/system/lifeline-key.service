@@ -1,0 +1,12 @@
+[Unit]
+Description=Lifeline: take the phone's key from its USB key drive and start SSH
+After=local-fs.target systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lifeline-key
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

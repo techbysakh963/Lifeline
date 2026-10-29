@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+# No shared host keys in a public image: the phone gives each session its own.
+rm -f /etc/ssh/ssh_host_*
+# SSH starts only from lifeline-key, after the phone's key arrived.
+systemctl disable ssh.service ssh.socket 2>/dev/null || true
+systemctl enable lifeline-key.service systemd-networkd.service systemd-resolved.service
+# No passwords at all (console login is impossible too; the phone is the way in).
+passwd -l root
+# No desktop in the image: boot to the text console, not to a graphical target with nothing to show.
+systemctl set-default multi-user.target
+echo lifeline-rescue > /etc/hostname
+cat > /etc/motd <<'M'
+
+Lifeline rescue system. The phone works on this PC over SSH; this PC's own disks are not mounted.
+
+M

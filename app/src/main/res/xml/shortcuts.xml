@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon → "Type on PC" (can be dragged to the home screen as its own icon). id stays "voice" so pinned shortcuts keep working. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="voice"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_voice"
+        android:shortcutShortLabel="@string/shortcut_voice_short"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="com.rodinrescue.action.VOICE_TYPE"
+            android:targetPackage="com.rodinrescue"
+            android:targetClass="com.rodinrescue.MainActivity" />
+    </shortcut>
+</shortcuts>

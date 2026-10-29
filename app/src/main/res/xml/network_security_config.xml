@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- No cleartext anywhere. (Loopback cleartext was for the old Termux bridges, removed 2026-10-28; the built-in
+         CLIs run inside the app's own Ubuntu and talk HTTPS to their publishers.) -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

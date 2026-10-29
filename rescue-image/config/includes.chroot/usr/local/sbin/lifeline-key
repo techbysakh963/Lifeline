@@ -1,0 +1,42 @@
+#!/bin/sh
+# Lifeline rescue: find the phone's key drive (a tiny raw USB drive the phone serves next to this system), take the
+# phone's SSH key and this session's host key from it, then start SSH. No key drive = no SSH (there are no passwords).
+# Format (text, then zero padding): "LIFELINE-RESCUE-KEY v1" / "authorized_key <base64>" / "host_key <base64>" / "end".
+set -u
+MAGIC="LIFELINE-RESCUE-KEY v1"
+mkdir -p /run/lifeline && chmod 700 /run/lifeline
+# Only a drive the phone names "Lifeline" / "- key" (its SCSI vendor/product, set by the app's RescueDrive) counts,
+# and only if it is the ONLY such drive: a second candidate means something else is pretending (security review 2026-10-28).
+candidates() {
+  for d in /sys/block/sd*; do
+    [ -e "$d" ] || continue
+    sectors=$(cat "$d/size" 2>/dev/null || echo 0)
+    # The key drive is tiny (64 KiB = 128 sectors); never read big disks.
+    [ "$sectors" -gt 0 ] && [ "$sectors" -le 2048 ] || continue
+    vendor=$(cat "$d/device/vendor" 2>/dev/null | tr -d ' ')
+    model=$(cat "$d/device/model" 2>/dev/null | tr -d ' ')
+    [ "$vendor" = "Lifeline" ] && [ "$model" = "-key" ] || continue
+    echo "/dev/$(basename "$d")"
+  done
+}
+for i in $(seq 1 90); do
+  found=$(candidates)
+  n=$(printf '%s' "$found" | grep -c . || true)
+  if [ "$n" -gt 1 ]; then echo "lifeline-key: $n key drives found; refusing (only the phone's may be there)"; exit 1; fi
+  for dev in $found; do
+    head -c 65536 "$dev" 2>/dev/null | tr -d '\000' > /run/lifeline/drive || continue
+    [ "$(head -n 1 /run/lifeline/drive)" = "$MAGIC" ] || continue
+    grep -q '^end$' /run/lifeline/drive || continue
+    umask 077
+    sed -n 's/^authorized_key //p' /run/lifeline/drive | head -n 1 | base64 -d > /run/lifeline/authorized_keys || continue
+    sed -n 's/^host_key //p' /run/lifeline/drive | head -n 1 | base64 -d > /run/lifeline/ssh_host_key || continue
+    rm -f /run/lifeline/drive
+    [ -s /run/lifeline/authorized_keys ] && [ -s /run/lifeline/ssh_host_key ] || continue
+    echo "lifeline-key: phone key found on $dev; starting SSH"
+    systemctl start ssh.service
+    exit 0
+  done
+  sleep 2
+done
+echo "lifeline-key: no phone key drive found; SSH stays off"
+exit 1

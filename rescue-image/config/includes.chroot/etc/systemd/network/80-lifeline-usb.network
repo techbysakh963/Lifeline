@@ -1,0 +1,8 @@
+# Only the phone's USB network (Android tethering: NCM or RNDIS; CDC Ethernet/EEM for completeness). A LAN cable or
+# Wi-Fi gets no address, so SSH can't be reached from anything but the phone (security review 2026-10-28).
+[Match]
+Driver=cdc_ncm rndis_host cdc_ether cdc_eem
+
+[Network]
+DHCP=yes
+LinkLocalAddressing=ipv4

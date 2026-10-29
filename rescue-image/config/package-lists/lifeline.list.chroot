@@ -1,0 +1,42 @@
+# Lifeline rescue system: boots from the phone, starts SSH for the phone only, has the tools to repair a PC's disks.
+# Boot (live-build adds the signed shim/GRUB for Secure Boot)
+linux-image-amd64
+live-boot
+systemd-sysv
+# Network over the USB cable (the phone's tethering: cdc_ncm / rndis_host are in the kernel)
+systemd-resolved
+openssh-server
+iproute2
+# Disks and file systems
+e2fsprogs
+btrfs-progs
+xfsprogs
+dosfstools
+ntfs-3g
+exfatprogs
+lvm2
+mdadm
+cryptsetup
+gdisk
+parted
+fdisk
+smartmontools
+nvme-cli
+hdparm
+testdisk
+gddrescue
+rsync
+# Boot repair from a chroot
+efibootmgr
+grub-efi-amd64-bin
+grub-pc-bin
+os-prober
+# Windows disks
+chntpw
+# Everyday
+less
+nano
+pciutils
+usbutils
+lsof
+file

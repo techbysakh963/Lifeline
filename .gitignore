@@ -1,0 +1,21 @@
+build/
+.gradle/
+local.properties
+*.iml
+.idea/
+
+*.apk
+.kotlin/
+!gradle/wrapper/gradle-wrapper.jar
+__pycache__/
+*.pyc
+
+# Release signing: never in the repo
+*.jks
+*.keystore
+keystore.properties
+app/.cxx/
+rescue-image/out/
+rescue-image/cache/
+rescue-image/out-build.log
+rescue-image/fail-screen.ppm

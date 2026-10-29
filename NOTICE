@@ -1,0 +1,28 @@
+Lifeline
+Copyright 2026 techbysakh963 (https://github.com/techbysakh963)
+
+This product is Lifeline, created by techbysakh963.
+Original project: https://github.com/techbysakh963/Lifeline
+
+Licensed under the Apache License, Version 2.0 (see LICENSE). Under Section 4(d)
+of that license, any redistribution of this software or of a work derived from
+it (source or binary, modified or not) must include a readable copy of this
+NOTICE file, and derived works must keep the attribution to the original author
+above, for example in an "About" / credits screen, the documentation, or the
+README, wherever such third-party notices normally appear.
+
+The names "Lifeline" and the Lifeline logo identify the original project; under
+Section 6 of the license, the license does not grant permission to use them to
+endorse or promote a derived product.
+
+-----------------------------------------------------------------------------
+Third-party components (each under its own license):
+
+* Geist and Geist Mono fonts, Copyright 2024 The Geist Project Authors;
+  Unbounded font, Copyright The Unbounded Project Authors —
+  SIL Open Font License 1.1 (third_party/fonts/)
+* sshj (com.hierynomus:sshj) — Apache License 2.0
+* Bouncy Castle (bcprov, bcpkix) — Bouncy Castle License (MIT-style)
+* OkHttp, Okio — Apache License 2.0
+* kotlinx.coroutines, kotlinx.serialization, Kotlin stdlib — Apache License 2.0
+* AndroidX / Jetpack Compose / Material 3 / Biometric — Apache License 2.0
