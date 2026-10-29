@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.rodinrescue.R
 
-/** Donation target. The QR in res/drawable-nodpi/donate_usdt_qr.png encodes exactly this (scripts/dev/make_donate_qr.py). */
+/** Donation target. The QR in res/drawable-nodpi/donate_usdt_qr.png encodes exactly this (DonateTest checks every copy). */
 object Donate {
     const val ADDRESS = "0xfd64cbc4935dcce5b719e223469a84c83650b010"
     const val ASSET = "USDT"

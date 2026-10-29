@@ -10,7 +10,9 @@ class DonateTest {
     @Test fun addressIsWellFormedAndEverywhereTheSame() {
         assertTrue(Donate.ADDRESS, Regex("^0x[0-9a-f]{40}$").matches(Donate.ADDRESS))
         // Unit tests run with the module dir (app/) as working directory.
-        for (path in listOf("../README.md", "../scripts/dev/make_donate_qr.py")) {
+        // The QR script is a dev helper and isn't in the public repo.
+        val qrScript = listOf("../scripts/dev/make_donate_qr.py").filter { File(it).exists() }
+        for (path in listOf("../README.md") + qrScript) {
             val text = File(path).readText()
             val found = Regex("0x[0-9a-fA-F]{40}").findAll(text).map { it.value.lowercase() }.toSet()
             assertEquals(path, setOf(Donate.ADDRESS), found)

@@ -59,7 +59,7 @@ Gemini and DeepSeek work too.
 - **SSH rescue:** a Linux PC. Keyboard rescue works with any PC: BIOS and boot menus, Linux consoles, Windows recovery.
 - **An AI:** a Claude, ChatGPT or Gemini subscription, or an API key.
 
-Lifeline is in **beta**. See what's coming in the [roadmap](ROADMAP.md).
+Lifeline is in **beta**.
 
 <details>
 <summary><b>How it works</b></summary>
