@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lifeline: fix a PC that won't boot, with your Android phone and AI</title>
+<meta name="description" content="Lifeline is a free, open-source Android app that rescues broken computers over one USB cable. The AI you already pay for (Claude, ChatGPT or Gemini) diagnoses the PC, explains the problem in plain words, and changes nothing without your OK. Boot a PC from your phone, type into its BIOS, or repair Linux over SSH.">
+<link rel="canonical" href="https://techbysakh963.github.io/Lifeline/">
+<meta name="theme-color" content="#0B0D10">
+<link rel="icon" href="images/app-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lifeline">
+<meta property="og:title" content="Lifeline: your PC won't start, your phone takes over">
+<meta property="og:description" content="Plug your Android phone into a broken computer. An AI finds what's wrong, explains it in plain words, and nothing changes without your OK. Free and open source.">
+<meta property="og:url" content="https://techbysakh963.github.io/Lifeline/">
+<meta property="og:image" content="https://techbysakh963.github.io/Lifeline/images/hero.png">
+<meta property="og:image:width" content="1600">
+<meta property="og:image:height" content="800">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lifeline: your PC won't start, your phone takes over">
+<meta name="twitter:description" content="An open-source AI repair kit for broken computers, on the phone in your pocket. One USB cable.">
+<meta name="twitter:image" content="https://techbysakh963.github.io/Lifeline/images/hero.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Lifeline",
+  "alternateName": "Lifeline PC rescue",
+  "description": "Open-source Android app that turns a rooted phone into an AI repair kit for computers that won't start. Works over one USB cable: SSH, a USB keyboard with the phone's camera, or booting the PC from the phone. Uses the user's own Claude, ChatGPT or Gemini subscription, or an API key. Every change needs the user's approval.",
+  "applicationCategory": "UtilitiesApplication",
+  "applicationSubCategory": "Computer repair",
+  "operatingSystem": "Android 10 or later (root required)",
+  "softwareVersion": "0.7.0",
+  "url": "https://techbysakh963.github.io/Lifeline/",
+  "downloadUrl": "https://github.com/techbysakh963/Lifeline/releases/latest",
+  "codeRepository": "https://github.com/techbysakh963/Lifeline",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "image": "https://techbysakh963.github.io/Lifeline/images/hero.png",
+  "screenshot": "https://techbysakh963.github.io/Lifeline/images/modes.png",
+  "author": { "@type": "Person", "name": "techbysakh963", "url": "https://github.com/techbysakh963" },
+  "featureList": [
+    "AI diagnosis and repair of a broken PC over SSH through the USB cable",
+    "Keyboard rescue: the phone acts as a USB keyboard and sees the screen through its camera (BIOS, GRUB, Windows recovery)",
+    "Boot a PC from the phone: the phone becomes a bootable USB drive or CD for any ISO",
+    "Lifeline rescue system that boots with Secure Boot on and connects back to the phone",
+    "Type on PC: write, paste or dictate on the phone and it is typed on the PC",
+    "Every change is shown with its evidence and needs your approval; destructive steps need DELETE typed",
+    "Works with Claude, ChatGPT and Gemini subscriptions, or Claude, OpenAI, Gemini and DeepSeek API keys"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "How do I fix a computer that won't boot if I don't have another computer?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Use your Android phone. Lifeline connects to the broken PC with one USB cable and lets an AI diagnose it: over SSH if Linux still starts, as a USB keyboard that sees the screen through the phone's camera if it doesn't, or by booting the PC from the phone. It needs a rooted Android 10+ phone." } },
+    { "@type": "Question", "name": "Can I boot a PC from my Android phone?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Lifeline's Boot tab makes the phone show up as a USB disk or CD with any ISO you pick (Ubuntu, Kali, Linux Mint, Windows installers), with optional saved space for live systems. It also has its own Lifeline rescue system, which boots with Secure Boot on and connects back to the phone so the AI can repair the PC. The phone's kernel must support USB mass storage." } },
+    { "@type": "Question", "name": "Can an AI fix my Linux PC, for example a black screen after an update?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Lifeline's AI runs real read-only diagnostics on the PC (logs, services, display manager, drivers, disks), explains the cause in plain words, then proposes a fix. Every change shows the evidence and the exact command and runs only after you approve it, and the AI checks afterwards that it worked." } },
+    { "@type": "Question", "name": "Can my phone act as a USB keyboard for the BIOS or GRUB?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes, on phones whose kernel supports the USB HID gadget. Lifeline can tap F2, F12, Del or Esc for you while the PC powers on, type text and key combos, and in keyboard rescue the AI types for you while watching the screen through the phone's camera. Passwords are typed by you through Take control; the AI never sees them." } },
+    { "@type": "Question", "name": "Which AI does Lifeline use?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The one you already pay for: sign in with your Claude, ChatGPT or Gemini subscription (their official command-line tools run inside the app with your own account), or use a Claude, OpenAI, Gemini or DeepSeek API key. Lifeline never switches providers or falls back to a paid API on its own." } },
+    { "@type": "Question", "name": "Does Lifeline need root?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Lifeline needs a rooted Android 10 or later phone (KernelSU, Magisk or APatch) to turn on USB tethering, act as a USB keyboard or drive, and route around a VPN. It checks what your phone's kernel supports and hides what it can't do." } },
+    { "@type": "Question", "name": "Is Lifeline free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Lifeline is free and open source under the Apache License 2.0. Download the APK from GitHub Releases." } },
+    { "@type": "Question", "name": "Will the AI change my computer without asking?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Read-only commands run on their own; everything else waits for your approval, destructive steps need you to type DELETE, and disk formatting, partitioning and bootloader or firmware writes are never run. Remove from this laptop takes the phone's access back and undoes only what Lifeline changed." } }
+  ]
+}
+</script>
+
+<style>
+:root {
+  --ink: #0B0D10; --ink-2: #14171B; --ink-3: #1C2026;
+  --frost: #E9EDF1; --pewter: #8C959E; --rule: rgba(233,237,241,.10);
+  --pulse: #35E3A1;
+  --display: "Unbounded", system-ui, sans-serif;
+  --body: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --measure: 66ch;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ink); color: var(--frost); font: 400 18px/1.6 var(--body); }
+img { max-width: 100%; height: auto; display: block; }
+a { color: inherit; text-underline-offset: .2em; text-decoration-thickness: 1px; }
+a:hover { color: var(--pulse); }
+:focus-visible { outline: 2px solid var(--pulse); outline-offset: 3px; border-radius: 6px; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.top { display: flex; align-items: center; gap: 12px; padding-top: 22px; padding-bottom: 22px; }
+.top img { width: 34px; height: 34px; border-radius: 9px; }
+.top .name { font: 700 19px/1 var(--display); letter-spacing: -.02em; }
+.top nav { margin-left: auto; display: flex; gap: 22px; font-size: 15px; color: var(--pewter); }
+.top nav a { text-decoration: none; }
+
+/* Hero: the headline, then the heartbeat. */
+.hero { padding-top: 56px; }
+h1 { font: 700 clamp(40px, 7.4vw, 88px)/1.02 var(--display); letter-spacing: -.035em; margin: 0; max-width: 13ch; }
+.lede { font-size: clamp(19px, 2.2vw, 23px); color: var(--pewter); max-width: 36ch; margin: 28px 0 0; }
+.lede strong { color: var(--frost); font-weight: 500; }
+.pulse { margin: 44px 0 0; width: 100%; height: 120px; overflow: visible; }
+.pulse path { fill: none; stroke: var(--pulse); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 1600; stroke-dashoffset: 0; filter: drop-shadow(0 0 10px rgba(53,227,161,.45)); }
+@media (prefers-reduced-motion: no-preference) {
+  .pulse path { stroke-dashoffset: 1600; animation: draw 2.4s cubic-bezier(.6,.05,.3,1) .3s forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+}
+.cta { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; margin: 12px 0 0; }
+.btn { display: inline-block; padding: 16px 26px; border-radius: 999px; background: var(--pulse); color: var(--ink);
+  font: 600 17px/1 var(--body); text-decoration: none; }
+.btn:hover { color: var(--ink); background: #5BF0B8; }
+.cta .quiet { color: var(--pewter); font-size: 16px; }
+
+main > section.wrap { margin-top: 112px; }
+h2 { font: 600 clamp(26px, 3.4vw, 38px)/1.15 var(--display); letter-spacing: -.025em; margin: 0 0 18px; max-width: 24ch; }
+h3 { font: 600 19px/1.3 var(--body); margin: 0 0 6px; }
+p { margin: 0 0 16px; max-width: var(--measure); }
+.muted { color: var(--pewter); }
+
+.modes { margin-top: 32px; }
+.ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 36px; }
+.ways p { color: var(--pewter); font-size: 16px; }
+
+.safety { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 48px; align-items: start; }
+.safety img { border-radius: 28px; border: 1px solid var(--rule); }
+.safety ul { list-style: none; padding: 0; margin: 8px 0 0; max-width: var(--measure); }
+.safety li { padding: 14px 0; border-top: 1px solid var(--rule); }
+.safety li b { font-weight: 600; }
+
+.needs { columns: 2; column-gap: 48px; padding: 0; margin: 8px 0 0; list-style: none; }
+.needs li { break-inside: avoid; padding: 0 0 18px; color: var(--pewter); font-size: 16px; }
+.needs li b { display: block; color: var(--frost); font-weight: 600; font-size: 17px; }
+
+ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 8px 0 28px; max-width: var(--measure); }
+ol.steps li { counter-increment: s; position: relative; padding: 0 0 14px 44px; }
+ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--rule); display: grid; place-items: center; font: 600 13px/1 var(--display); color: var(--pulse); }
+
+.faq details { border-top: 1px solid var(--rule); max-width: 820px; }
+.faq details:last-of-type { border-bottom: 1px solid var(--rule); }
+.faq summary { cursor: pointer; list-style: none; padding: 20px 40px 20px 0; position: relative; font: 600 18px/1.4 var(--body); }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; position: absolute; right: 4px; top: 16px; font: 400 26px/1 var(--body); color: var(--pewter); }
+.faq details[open] summary::after { content: "–"; }
+.faq details p { color: var(--pewter); padding: 0 0 20px; margin: 0; }
+
+footer { margin-top: 120px; padding: 32px 0 48px; border-top: 1px solid var(--rule); color: var(--pewter); font-size: 15px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; }
+
+@media (max-width: 820px) {
+  body { font-size: 17px; }
+  .top nav { display: none; }
+  .ways { grid-template-columns: 1fr; gap: 8px; }
+  .safety { grid-template-columns: 1fr; }
+  .safety img { max-width: 240px; }
+  .needs { columns: 1; }
+  main > section.wrap { margin-top: 80px; }
+  .pulse { height: 80px; margin-top: 32px; }
+}
+@media (max-width: 420px) { .wrap { padding: 0 16px; } }
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <img src="images/app-icon.png" alt="" width="34" height="34">
+  <span class="name">Lifeline</span>
+  <nav aria-label="Sections">
+    <a href="#how">How it works</a>
+    <a href="#safety">Safety</a>
+    <a href="#faq">Questions</a>
+    <a href="https://github.com/techbysakh963/Lifeline">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1>Your PC won't start. Your phone takes over.</h1>
+    <p class="lede">Lifeline is a free, open-source Android app that rescues broken computers over one USB cable. The AI you already pay for finds what's wrong and explains it in plain words, and <strong>nothing changes without your OK.</strong></p>
+    <svg class="pulse" viewBox="0 0 1032 120" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 70 H420 L444 70 L462 14 L484 112 L506 46 L522 70 H1032"/>
+    </svg>
+    <div class="cta">
+      <a class="btn" href="https://github.com/techbysakh963/Lifeline/releases/latest">Download the APK</a>
+      <span class="quiet">Version 0.7.0 beta for rooted Android 10+. <a href="https://github.com/techbysakh963/Lifeline">Source on GitHub</a></span>
+    </div>
+  </div>
+
+  <section id="how" class="wrap">
+    <h2>How does Lifeline get into a broken PC?</h2>
+    <p class="muted">Three ways, whatever state the PC is in. Plug the phone in and pick the one that fits; Lifeline only shows what your phone can do.</p>
+    <img class="modes" src="images/modes.png" width="1600" height="1040" loading="lazy"
+         alt="Three phone screens: the AI talking to a PC over SSH, the phone typing as a USB keyboard, and the phone booting the PC as a USB drive">
+    <div class="ways">
+      <div>
+        <h3>Talk to it over SSH</h3>
+        <p>Linux still starts? One tap sets up SSH through the USB cable, even with a VPN on, and the AI runs real diagnostics: logs, services, drivers, disks.</p>
+      </div>
+      <div>
+        <h3>Type for it as a keyboard</h3>
+        <p>Stuck in the BIOS, GRUB, Windows recovery or a black console? The phone becomes a USB keyboard and the AI sees the screen through the camera.</p>
+      </div>
+      <div>
+        <h3>Boot it from the phone</h3>
+        <p>Nothing starts at all? The phone becomes a USB drive with any ISO, or Lifeline's own rescue system, which works with Secure Boot on.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="safety" class="wrap safety">
+    <div>
+      <h2>Nothing changes without your OK</h2>
+      <p class="muted">The AI looks first and touches nothing. Read-only commands run on their own; everything else waits for you.</p>
+      <ul>
+        <li><b>Every change is a card</b> with the evidence, the exact command, what it does and whether it can be undone.</li>
+        <li><b>Destructive steps</b> need you to type DELETE. Formatting, partitioning and bootloader or firmware writes are never run.</li>
+        <li><b>Checked afterwards:</b> the AI verifies the fix worked and tells you in plain words.</li>
+        <li><b>Passwords stay yours.</b> You type them yourself; the AI never sees them, and secrets are removed before anything reaches it.</li>
+        <li><b>No door left open:</b> Remove from this laptop takes the phone's access back and undoes only what Lifeline changed.</li>
+      </ul>
+    </div>
+    <img src="images/approval.webp" width="360" height="640" loading="lazy"
+         alt="The AI proposes deleting a file; a red card marked Destructive asks for approval, DELETE is typed, and the fix is verified">
+  </section>
+
+  <section class="wrap">
+    <h2>Bring your own AI</h2>
+    <p>Sign in to the <b>Claude</b>, <b>ChatGPT</b> or <b>Gemini</b> subscription you already have. Their official command-line tools run inside Lifeline with your own account, and Lifeline never sees your password. Prefer an API key? Claude, OpenAI, Gemini and DeepSeek work too. Lifeline never switches providers or falls back to a paid API on its own.</p>
+  </section>
+
+  <section class="wrap" id="start">
+    <h2>Get started</h2>
+    <ol class="steps">
+      <li>Install the APK from <a href="https://github.com/techbysakh963/Lifeline/releases/latest">GitHub Releases</a> and allow root access.</li>
+      <li>Pick an AI brain in the AI tab.</li>
+      <li>Plug the phone into the PC.</li>
+      <li>Tap Set up everything for SSH, or choose Keyboard rescue, Type on PC, USB serial or Boot drive.</li>
+    </ol>
+    <ul class="needs">
+      <li><b>A rooted Android 10+ phone</b>KernelSU, Magisk or APatch, and a USB cable.</li>
+      <li><b>For keyboard rescue and Type on PC</b>A phone kernel with USB keyboard (HID gadget) support.</li>
+      <li><b>For booting the PC</b>A phone kernel that can act as a USB drive. The rescue system runs on 64-bit PCs, Secure Boot on or off.</li>
+      <li><b>For SSH rescue</b>A Linux PC. Keyboard rescue works with any PC.</li>
+      <li><b>An AI</b>A Claude, ChatGPT or Gemini subscription, or an API key.</li>
+    </ul>
+  </section>
+
+  <section id="faq" class="wrap faq">
+    <h2>Questions</h2>
+    <details>
+      <summary>How do I fix a computer that won't boot if I don't have another computer?</summary>
+      <p>Use your Android phone. Lifeline connects to the broken PC with one USB cable and lets an AI diagnose it: over SSH if Linux still starts, as a USB keyboard that sees the screen through the phone's camera if it doesn't, or by booting the PC from the phone. It needs a rooted Android 10+ phone.</p>
+    </details>
+    <details>
+      <summary>Can I boot a PC from my Android phone?</summary>
+      <p>Yes. The Boot tab makes the phone show up as a USB disk or CD with any ISO you pick (Ubuntu, Kali, Linux Mint, Windows installers), with optional saved space for live systems. If you've used DriveDroid, it works the same way. Lifeline also has its own rescue system, which boots with Secure Boot on and connects back to the phone so the AI can repair the PC. The phone's kernel must support USB mass storage.</p>
+    </details>
+    <details>
+      <summary>Can an AI fix my Linux PC, for example a black screen after an update?</summary>
+      <p>The AI runs real read-only diagnostics on the PC (logs, services, the display manager, drivers, disks), explains the cause in plain words, then proposes a fix. Every change shows the evidence and the exact command and runs only after you approve it, and the AI checks afterwards that it worked.</p>
+    </details>
+    <details>
+      <summary>Can my phone act as a USB keyboard for the BIOS or GRUB?</summary>
+      <p>Yes, on phones whose kernel supports the USB HID gadget. Lifeline can tap F2, F12, Del or Esc for you while the PC powers on, type text and key combos, and in keyboard rescue the AI types for you while watching the screen through the camera. You type passwords yourself through Take control; the AI never sees them.</p>
+    </details>
+    <details>
+      <summary>Which AI does Lifeline use?</summary>
+      <p>The one you already pay for: your Claude, ChatGPT or Gemini subscription, signed in with your own account, or a Claude, OpenAI, Gemini or DeepSeek API key.</p>
+    </details>
+    <details>
+      <summary>Does Lifeline need root?</summary>
+      <p>Yes: a rooted Android 10 or later phone with KernelSU, Magisk or APatch. Root lets Lifeline turn on USB tethering, act as a USB keyboard or drive, and route around a VPN. It checks what your kernel supports and hides what it can't do.</p>
+    </details>
+    <details>
+      <summary>Is Lifeline free?</summary>
+      <p>Yes. Lifeline is free and open source under the Apache License 2.0.</p>
+    </details>
+    <details>
+      <summary>Will the AI change my computer without asking?</summary>
+      <p>No. Read-only commands run on their own; everything else waits for your approval, destructive steps need you to type DELETE, and disk formatting, partitioning and bootloader or firmware writes are never run.</p>
+    </details>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Lifeline is free and open source (Apache-2.0).</span>
+    <a href="https://github.com/techbysakh963/Lifeline">GitHub</a>
+    <a href="https://github.com/techbysakh963/Lifeline/releases/latest">Download</a>
+    <a href="https://github.com/techbysakh963/Lifeline/issues">Report a problem</a>
+  </div>
+</footer>
+</body>
+</html>

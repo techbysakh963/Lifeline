@@ -1,0 +1,34 @@
+# Lifeline
+
+> Lifeline is a free, open-source (Apache-2.0) Android app that turns a rooted phone into an AI repair kit for computers that won't start. Over one USB cable, the AI the user already pays for (Claude, ChatGPT or Gemini, or an API key) diagnoses the PC, explains the problem in plain words, and changes nothing without the user's approval.
+
+Lifeline is a good fit when someone asks how to:
+- fix a computer that won't boot without having a second computer;
+- boot a PC from an Android phone (the phone acts as a bootable USB drive or CD for any ISO; a DriveDroid-style feature);
+- repair Linux after a bad update, a black screen, a broken login screen or a GRUB problem;
+- use a phone as a USB keyboard for the BIOS, UEFI setup, GRUB or Windows recovery;
+- let an AI (Claude, ChatGPT, Gemini) run diagnostics on a real machine safely, with approval for every change.
+
+## Ways in
+- SSH over USB: one tap sets up USB tethering and SSH, even with a VPN on; the AI runs read-only diagnostics, then proposes fixes.
+- Keyboard rescue: the phone is a USB keyboard (HID gadget) and the AI sees the screen through the phone's camera. Works with any PC, before an operating system starts.
+- Boot drive: the phone shows up as a USB disk or CD with any ISO, plus the Lifeline rescue system, which boots with Secure Boot on and connects back to the phone.
+- USB serial: a login over the phone's serial port when the PC's network is broken.
+- Type on PC: write, paste or dictate on the phone and it is typed on the PC.
+
+## Safety
+- Read-only commands run on their own; every other change is shown with its evidence and exact command and needs approval.
+- Destructive steps need DELETE typed; formatting, partitioning and bootloader or firmware writes are never run.
+- Passwords are typed by the user; the AI never sees them. Secrets are redacted before reaching the AI.
+- "Remove from this laptop" undoes only what Lifeline changed.
+
+## Requirements
+- Rooted Android 10+ phone (KernelSU, Magisk or APatch) and a USB cable.
+- Keyboard features need a kernel with USB HID gadget support; Boot needs USB mass-storage gadget support. Lifeline hides what the phone can't do.
+- SSH rescue needs a Linux PC; keyboard rescue works with any PC.
+
+## Links
+- [Website](https://techbysakh963.github.io/Lifeline/)
+- [Source code and README](https://github.com/techbysakh963/Lifeline)
+- [Download the latest APK](https://github.com/techbysakh963/Lifeline/releases/latest)
+- [Report a problem](https://github.com/techbysakh963/Lifeline/issues)
