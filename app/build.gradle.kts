@@ -38,18 +38,20 @@ android {
     }
     buildTypes {
         release {
+            isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
         }
-        // Same shrunken build, signed with the debug key: installs over the dev build without losing app data.
-        create("qa") {
-            initWith(getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
-            matchingFallbacks += listOf("release")
+        // Debuggable, signed with the release key when it's here: installs over the release app without losing its data.
+        create("dev") {
+            initWith(getByName("debug"))
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
         }
     }
+    check(!buildTypes.getByName("release").isDebuggable) { "The release build must never be debuggable (use the dev build)" }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -201,6 +201,24 @@ while True:
         } finally { b.stop() }
     }
 
+    /** Tethering renames the USB interface every time: each setup drops Lifeline's recorded rules for vanished ones. */
+    @Test fun setupDropsUfwRulesForVanishedUsbInterfaces() {
+        val dir = Files.createTempDirectory("ufw").toFile()
+        val log = File(dir, "log")
+        val bin = File(dir, "bin").apply { mkdir() }
+        File(bin, "ufw").apply { writeText("#!/bin/sh\necho \"ufw $*\" >> '${log.path}'\n"); setExecutable(true) }
+        val net = File(dir, "net").apply { mkdir(); File(this, "enxlive").mkdir() }
+        val state = File(dir, "state").apply { writeText("SVC=ssh\nWAS_ENABLED=0\nUFW=enxgone\nUFW=enxlive\nUFW=enxnow\nSSH_PORT=22\n") }
+        val p = ProcessBuilder("sh", "-c", "set -e\n" + LaptopScript.PRUNE_UFW).apply {
+            environment().putAll(mapOf("PATH" to "${bin.path}:${System.getenv("PATH")}", "STATE" to state.path, "IFACE" to "enxnow",
+                "SSH_PORT" to "22", "RODIN_NET_DIR" to net.path))
+        }.redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText()
+        assertEquals(out, 0, p.waitFor())
+        assertEquals("ufw delete allow in on enxgone to any port 22 proto tcp", log.readText().trim())
+        assertEquals("SVC=ssh\nWAS_ENABLED=0\nUFW=enxlive\nUFW=enxnow\nSSH_PORT=22\n", state.readText())
+    }
+
     @Test fun scriptHasValidShellSyntax() {
         val f = File.createTempFile("rodin", ".sh"); f.writeText(LaptopScript.build("10.1.2.3", 8787, "tok", "ssh-rsa AAAA rodin-rescue"))
         for (sh in listOf("sh", "bash")) { val p = ProcessBuilder(sh, "-n", f.path).redirectErrorStream(true).start(); val o = p.inputStream.bufferedReader().readText(); assertEquals("$sh: $o", 0, p.waitFor()) }

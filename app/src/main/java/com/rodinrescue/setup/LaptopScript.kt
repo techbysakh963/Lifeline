@@ -2,6 +2,19 @@ package com.rodinrescue.setup
 
 /** Generates the one-line laptop bootstrap script the phone serves over the USB link. */
 object LaptopScript {
+    /**
+     * Before adding this run's ufw rule: the phone's USB interface gets a new name every time tethering starts
+     * (enx<random MAC>), so drop the rules Lifeline recorded for interfaces that are gone. Only recorded ones (the state
+     * file's UFW= lines); a rule the user added is never touched. Uses STATE, IFACE, SSH_PORT.
+     */
+    internal val PRUNE_UFW = """  if [ -f "${'$'}STATE" ]; then
+    for i in ${'$'}(sed -n 's/^UFW=//p' "${'$'}STATE"); do
+      { [ "${'$'}i" = "${'$'}IFACE" ] || [ -e "${'$'}{RODIN_NET_DIR:-/sys/class/net}/${'$'}i" ]; } && continue
+      ufw delete allow in on "${'$'}i" to any port "${'$'}SSH_PORT" proto tcp >/dev/null 2>&1
+      grep -vx "UFW=${'$'}i" "${'$'}STATE" > "${'$'}STATE.tmp"; cat "${'$'}STATE.tmp" > "${'$'}STATE"; rm -f "${'$'}STATE.tmp"
+    done
+  fi"""
+
     /** Only [A-Za-z0-9] survive: the phone's USB serial number goes into a udev rule. */
     fun safeSerial(s: String?) = s.orEmpty().filter { it.isLetterOrDigit() && it.code < 128 }.take(64)
 
@@ -67,6 +80,7 @@ say "Phone key authorized in ${'$'}AK"
 IFACE="${'$'}(ip -4 route get "${'$'}PHONE_IP" 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)"
 LAPTOP_IP="${'$'}(ip -4 route get "${'$'}PHONE_IP" 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -1)"
 if [ -z "${'$'}RODIN_SKIP_INSTALL" ] && command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active" && [ -n "${'$'}IFACE" ]; then
+$PRUNE_UFW
   ufw allow in on "${'$'}IFACE" to any port "${'$'}SSH_PORT" proto tcp >/dev/null && say "ufw: SSH allowed on ${'$'}IFACE only" && UFW_ADDED="${'$'}IFACE"
 fi
 

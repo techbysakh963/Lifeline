@@ -12,14 +12,15 @@ class CommandPolicyTest {
     @Test fun readOnlyDiagnostics() {
         listOf("uname -a", "cat /etc/os-release", "systemctl get-default", "systemctl --failed", "systemctl status display-manager --no-pager",
             "journalctl -b -p err --no-pager -n 100", "df -h", "systemctl list-units --type=service | grep -i gdm", "ip -br addr", "dpkg -l | grep nvidia",
-            "dmesg --level=err,warn 2>/dev/null | tail -n 20", "lsblk -f", "sudo journalctl -b", "find /var/log -name '*.log' -mtime -1", "pacman -Qi linux")
+            "dmesg --level=err,warn 2>/dev/null | tail -n 20", "lsblk -f", "sudo journalctl -b", "find /var/log -name '*.log' -mtime -1", "pacman -Qi linux",
+            "pwd", "groups", "tty", "arch", "lsb_release -a", "users", "logname", "getconf PAGESIZE", "cd /var/log && pwd")
             .forEach { assertEquals(it, Risk.READ_ONLY, r(it)) }
     }
 
     @Test fun writesAreNotReadOnly() {
         listOf("systemctl restart gdm", "systemctl enable sddm", "echo hi > /etc/motd", "cat /etc/passwd >> /tmp/x", "apt install foo", "apt-get update",
             "journalctl --vacuum-size=10M", "find / -delete", "find . -exec rm {} ;", "ip link set eth0 down", "dmesg -C", "sysctl -w x=1", "mount /dev/sda1 /mnt",
-            "ls $(whoami)", "ls `id`", "cat /etc/hosts & ", "nano /etc/fstab", "sed -i s/a/b/ /etc/x", "sort -o /tmp/o file", "date -s 2020-01-01", "hostname evil")
+            "ls $(whoami)", "ls `id`", "cat /etc/hosts & ", "nano /etc/fstab", "sed -i s/a/b/ /etc/x", "sort -o /tmp/o file", "date -s 2020-01-01", "hostname evil", "pwd > /tmp/x")
             .forEach { assertNotEquals(it, Risk.READ_ONLY, r(it)) }
     }
 
