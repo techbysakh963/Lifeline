@@ -5,6 +5,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -72,7 +75,7 @@ internal fun ScreenColumn(content: @Composable ColumnScope.() -> Unit) =
         verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
 
 // ───────────────────────────── Home ─────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () -> Unit, openChat: () -> Unit, openAi: () -> Unit, openHistory: () -> Unit, openSettings: () -> Unit, openDevices: () -> Unit) {
     val ctx = LocalContext.current
@@ -159,11 +162,26 @@ fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () 
             }
         }
 
+        // The setup card is below the fold: follow it as it runs (the latest step, an error, or the command to paste),
+        // so a first-time user sees it working instead of pressing the button again.
+        val setupStep = remember { BringIntoViewRequester() }
+        var stepHeight by remember { mutableIntStateOf(0) }
+        val navSpacePx = with(androidx.compose.ui.platform.LocalDensity.current) { (LocalNavSpace.current + 12.dp).toPx() }
+        LaunchedEffect(vm.setupLog.size, vm.setupLog.lastOrNull(), vm.laptopCommand) {
+            // Its height plus the floating nav bar's, so the line ends up above the bar, not under it.
+            if (!vm.connected && (vm.setupLog.isNotEmpty() || vm.laptopCommand != null)) {
+                kotlinx.coroutines.delay(80); setupStep.bringIntoView(androidx.compose.ui.geometry.Rect(0f, 0f, 1f, stepHeight + navSpacePx))
+            }
+        }
+        val follow = Modifier.bringIntoViewRequester(setupStep).onSizeChanged { stepHeight = it.height }
         if (!vm.connected && (vm.setupLog.isNotEmpty() || vm.laptopCommand != null || (vm.vpnActive && !vm.bypassOk))) FrostCard {
             Text("Setup", style = MaterialTheme.typography.titleMedium)
             if (vm.vpnActive && !vm.bypassOk) Muted("Your VPN is on. “Set up everything for SSH” adds one rule so SSH over the USB cable goes around the VPN (the USB subnet only; nothing else changes). “Restore normal USB mode” removes it.")
-            vm.setupLog.forEach { Muted(it, color = if (it.startsWith("✗")) Frost.Bad else if (it.startsWith("✓")) Frost.GoodInk else Frost.Slate) }
-            vm.laptopCommand?.let { cmd ->
+            vm.setupLog.forEachIndexed { i, line ->
+                Muted(line, if (vm.laptopCommand == null && i == vm.setupLog.lastIndex) follow else Modifier,
+                    color = if (line.startsWith("✗")) Frost.Bad else if (line.startsWith("✓")) Frost.GoodInk else Frost.Slate)
+            }
+            vm.laptopCommand?.let { cmd -> Column(follow, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SegmentProgress(3, 2)
                 Text("On the laptop, open a terminal (Ctrl+Alt+F3 works too) and paste:", style = MaterialTheme.typography.titleSmall)
                 TerminalBlock { Mono(cmd) }
@@ -175,7 +193,7 @@ fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () 
                 StepRow(null, "Waiting for the laptop…", "It installs/enables OpenSSH if missing, authorizes this phone and reports back.", inProgress = true)
                 FrostSwitch(vm.serialLogin, { vm.updateSerialLogin(it) }, "Also allow login over USB serial")
                 Muted("Off by default. On: the laptop also gets a login prompt (your password) on this phone's USB serial port, for when its network or SSH breaks later. Only this phone gets it; Remove from this laptop takes it away. Set it before pasting the command.", color = Frost.Muted)
-            }
+            } }
         }
 
         if (vm.connected) FrostOutlineButton(if (vm.removing) "Removing access…" else if (vm.autoCleanup) "Disconnect & remove access" else "Disconnect", { vm.disconnect() }, Modifier.fillMaxWidth(), enabled = !vm.removing)
