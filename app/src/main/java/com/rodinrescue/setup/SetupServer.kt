@@ -49,21 +49,25 @@ class SetupServer(private val scope: CoroutineScope, private val scriptProvider:
     )
 
     private val lock = Any()
+    private var gen = 0                      // bumped by every start and stop: a start that was stopped meanwhile undoes itself
     private var acceptor: Acceptor? = null
     private var job: Job? = null
-    private var stopped = true
+    private var watch: Job? = null
     private var relayProcess: Process? = null
     private var relayKill: List<String>? = null
     private val checkedIn = AtomicBoolean(false)
     var boundPort: Int = 0; private set
+    /** Called when a relayed setup ends by itself (the root listener is gone, or the setup expired): withdraw the command. */
+    var onRelayLost: ((String) -> Unit)? = null
 
     /** Blocking (it may run root commands): call it off the main thread. Throws when no port could be opened. */
     fun start(bindIp: String, token: String, port: Int = 8787, relay: Relay? = null): Int {
         stop()
         // One setup server per app: a second screen once started its own and the first kept a root listener alive.
         synchronized(SetupServer) { running?.takeIf { it !== this }?.stop(); running = this }
+        val my = synchronized(lock) { ++gen }
         checkedIn.set(false)
-        val acc = if (relay != null) openRelayed(bindIp, port, relay) else {
+        val acc = if (relay != null) openRelayed(bindIp, port, relay, my) else {
             val ss = try { ServerSocket(port, 5, InetAddress.getByName(bindIp)) } catch (e: Exception) { ServerSocket(0, 5, InetAddress.getByName(bindIp)) }
             boundPort = ss.localPort
             object : Acceptor {
@@ -72,52 +76,79 @@ class SetupServer(private val scope: CoroutineScope, private val scriptProvider:
             }
         }
         synchronized(lock) {
-            stopped = false; acceptor = acc
+            if (gen != my) { acc.close(); throw IOException("Setup was cancelled") }   // stop() ran meanwhile; it ended the listener
+            acceptor = acc
             job = scope.launch(Dispatchers.IO) {
                 while (isActive) {
                     val c = try { acc.accept() } catch (e: Exception) { break }
                     launch { c.use { runCatching { handle(it.input, it.output, token) } } }
                 }
             }
+            if (relay != null) watch = scope.launch(Dispatchers.IO) { watchRelay(bindIp, boundPort, relay, my) }
         }
         return boundPort
     }
 
-    private fun openRelayed(bindIp: String, port: Int, relay: Relay): Acceptor {
+    private fun openRelayed(bindIp: String, port: Int, relay: Relay, my: Int): Acceptor {
         runCatching { ProcessBuilder(relay.kill(bindIp, port)).start().waitFor(5, TimeUnit.SECONDS) }   // left from an earlier run
         val (endpoint, acc) = relay.openPrivate()
         for (p in port..port + 10) {
             val proc = try { ProcessBuilder(relay.listen(bindIp, p, endpoint)).redirectErrorStream(true).start() } catch (e: Exception) { break }
+            val kill = relay.kill(bindIp, p)
+            // Registered at once, so a stop() from now on ends it too.
+            val current = synchronized(lock) { if (gen == my) { relayProcess = proc; relayKill = kill; true } else false }
+            if (!current) { endRelay(proc, kill); acc.close(); throw IOException("Setup was cancelled") }
             // Up to 3 s for root to bind. A listener that exits lost the port (or root was refused): try the next one.
             var holds = false
             for (i in 1..15) { Thread.sleep(200); if (!proc.isAlive) break; if (relay.rootHolds(bindIp, p)) { holds = true; break } }
-            if (holds) {
-                synchronized(lock) { relayProcess = proc; relayKill = relay.kill(bindIp, p) }
-                boundPort = p
-                return acc
-            }
-            proc.destroy(); runCatching { ProcessBuilder(relay.kill(bindIp, p)).start().waitFor(5, TimeUnit.SECONDS) }
+            if (holds) { boundPort = p; return acc }
+            synchronized(lock) { if (relayProcess === proc) { relayProcess = null; relayKill = null } }
+            endRelay(proc, kill)
         }
         acc.close()
         throw IOException("Couldn't open the setup port on $bindIp as root")
     }
 
+    /** Ends the setup when the root listener stops holding the port, and before the listener's own one-hour limit. */
+    private suspend fun watchRelay(ip: String, port: Int, relay: Relay, my: Int) {
+        val deadline = System.currentTimeMillis() + RELAY_LIFETIME_MS
+        while (true) {
+            delay(3000)
+            val proc = synchronized(lock) { if (gen != my) return; relayProcess }
+            val reason = when {
+                proc == null || !proc.isAlive || !relay.rootHolds(ip, port) -> "The setup link closed"
+                System.currentTimeMillis() > deadline -> "The setup link expired"
+                else -> continue
+            }
+            if (synchronized(lock) { gen == my }) { stop(); onRelayLost?.invoke(reason) }
+            return
+        }
+    }
+
     fun stop() {
-        val kill: List<String>?
+        val proc: Process?; val kill: List<String>?
         synchronized(lock) {
-            if (stopped) return
-            stopped = true
+            gen++
             runCatching { acceptor?.close() }; acceptor = null
-            job?.cancel(); job = null
-            relayProcess?.destroy(); relayProcess = null
+            job?.cancel(); job = null; watch?.cancel(); watch = null
+            proc = relayProcess; relayProcess = null
             kill = relayKill; relayKill = null
         }
-        // The root listener may not be our child (a root manager can start it for us): end it by its command line.
-        kill?.let { k -> Thread { runCatching { ProcessBuilder(k).start().waitFor(10, TimeUnit.SECONDS) } }.apply { isDaemon = true; start() } }
+        if (proc != null || kill != null) Thread { endRelay(proc, kill) }.apply { isDaemon = true; start() }
         synchronized(SetupServer) { if (running === this) running = null }
     }
 
-    private companion object { var running: SetupServer? = null }
+    /** The root listener may not be our child (a root manager can start it for us): also end it by its command line. */
+    private fun endRelay(proc: Process?, kill: List<String>?) {
+        proc?.destroy()
+        kill?.let { k -> runCatching { ProcessBuilder(k).start().waitFor(10, TimeUnit.SECONDS) } }
+    }
+
+    private companion object {
+        var running: SetupServer? = null
+        /** Shorter than the root listener's `timeout 3600`, so the command is never shown longer than the port is held. */
+        const val RELAY_LIFETIME_MS = 50 * 60_000L
+    }
 
     /** One request on [input]/[output]. */
     private fun handle(input: InputStream, out: OutputStream, token: String) {

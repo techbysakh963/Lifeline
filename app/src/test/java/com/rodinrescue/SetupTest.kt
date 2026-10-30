@@ -140,6 +140,32 @@ while True:
         assertEquals(1, opened); assertEquals(1, closed)
     }
 
+    /** stop() while start() waits for root: the start undoes itself (closes its endpoint, ends its listener) and fails. */
+    @Test fun aStopDuringStartLeavesNothingBehind() {
+        var closed = 0; val killed = java.util.concurrent.atomic.AtomicInteger()
+        val acceptor = object : Acceptor { override fun accept(): Conn { Thread.sleep(60_000); error("unreachable") }; override fun close() { closed++ } }
+        lateinit var srv: SetupServer
+        val relay = SetupServer.Relay({ "x" to acceptor }, { _, _, _ -> listOf("sleep", "30") },
+            { _, _ -> killed.incrementAndGet(); listOf("true") }, { _, _ -> srv.stop(); true })
+        srv = SetupServer(CoroutineScope(Dispatchers.IO), { "s" }) {}
+        assertThrows(java.io.IOException::class.java) { srv.start("127.0.0.1", "t", 40100, relay) }
+        assertEquals(1, closed)
+        assertTrue("the listener started for the cancelled setup must be ended", killed.get() >= 2)
+    }
+
+    /** The root listener dies while the command is shown: the setup ends and the app is told to withdraw the command. */
+    @Test fun aLostListenerEndsTheSetup() {
+        val lost = LinkedBlockingQueue<String>()
+        var closed = false
+        val acceptor = object : Acceptor { override fun accept(): Conn { while (!closed) Thread.sleep(50); throw java.io.IOException("closed") }; override fun close() { closed = true } }
+        val relay = SetupServer.Relay({ "x" to acceptor }, { _, _, _ -> listOf("sleep", "2") }, { _, _ -> listOf("true") }, { _, _ -> true })
+        val srv = SetupServer(CoroutineScope(Dispatchers.IO), { "s" }) {}
+        srv.onRelayLost = { lost.put(it) }
+        srv.start("127.0.0.1", "t", 40200, relay)
+        assertEquals("The setup link closed", lost.poll(10, TimeUnit.SECONDS))
+        assertTrue(closed)
+    }
+
     @Test fun rootListenerCommandsAreCheckedAndBounded() {
         assertEquals(listOf("su", "-c", "exec timeout 3600 toybox nc -L -s 10.32.213.199 -p 8787 toybox nc -U /data/user/0/com.rodinrescue/files/setup.sock"),
             RootRelay.listenCommand("10.32.213.199", 8787, "/data/user/0/com.rodinrescue/files/setup.sock"))

@@ -223,8 +223,9 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
         setupServer?.stop(); setupServer = srv
         // Under a VPN the laptop reaches the phone only through a root listener ([RootRelay.listenCommand]).
         val relay = if (NetFix.isVpnActive(ctx)) SetupServer.Relay(
-            openPrivate = { File(ctx.filesDir, "setup.sock").path.let { it to PrivateUnixAcceptor(it) } },
+            openPrivate = { File(ctx.filesDir, "setup-$setupToken.sock").path.let { it to PrivateUnixAcceptor(it) } },
             listen = RootRelay::listenCommand, kill = RootRelay::killListenersCommand, rootHolds = RootRelay::rootHolds) else null
+        srv.onRelayLost = { why -> viewModelScope.launch { if (setupServer === srv) { cancelLaptopWait(); slog("✗ $why. Press the button again for a new command.") } } }
         val port = try { withContext(Dispatchers.IO) { srv.start(i.phoneIp, setupToken, relay = relay) } }
             catch (e: Exception) { slog("✗ Couldn't open the setup port: ${e.message}. Press the button again."); return }
         laptopCommand = "curl -fsSL http://${i.phoneIp}:$port/s/$setupToken | sudo sh"
