@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +36,7 @@ fun BootScreen(vm: RodinViewModel) {
     val busy = vm.bootBusy != null
 
     ScreenColumn {
-        ScreenHeader("Boot drive", "Your phone as a bootable USB drive: rescue systems, live Linux, installers")
+        ScreenHeader("Boot drive", "Start a PC from your phone")
         if (st != null && !st.supported) {
             FrostCard {
                 Text("This phone can't be a USB drive", style = MaterialTheme.typography.titleMedium)
@@ -91,43 +93,48 @@ private fun ImageCard(vm: RodinViewModel, img: BootLibrary.Image, active: Boolea
     var confirm by remember { mutableStateOf<Pair<String, String>?>(null) }   // path to what
     val mode = vm.bootModes[img.name] ?: Mode.DISK
 
-    FrostCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    // One row: name, size and Boot. Tap it for how the PC sees it, saved space and delete.
+    var open by remember(img.name) { mutableStateOf(false) }
+    FrostCard(padding = 14.dp) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(role = Role.Button) { open = !open }, verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
-                Text(img.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Muted(size(img.bytes) + (img.savedBytes?.let { " · saved space ${size(it)}" } ?: ""))
+                Text(img.name.removeSuffix(".iso"), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Muted(size(img.bytes) + (if (mode == Mode.CD) " · CD" else "") + (img.savedBytes?.let { " · saved space ${size(it)}" } ?: ""), maxLines = 1)
             }
             if (active) Badge("On the PC", Tone.Good, dot = true)
+            else InkButton(if (vm.bootBusy == "Starting…") "…" else "Boot", { vm.bootStart(img, useSaved) }, enabled = !busy)
+            Icon(if (open) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, if (open) "Less" else "More", Modifier.size(20.dp), tint = Frost.Slate)
         }
-        // How the PC sees it: detected from the image, can be overridden.
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Muted("Shown as", Modifier.padding(end = 4.dp))
-            for ((m, label) in listOf(Mode.DISK to "USB disk", Mode.CD to "CD")) {
-                val sel = mode == m
-                Text(label, Modifier.clip(Pill).background(if (sel) Frost.Ink else Frost.Field).clickable(enabled = !active, role = Role.RadioButton) { vm.bootSetMode(img, m) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp), color = if (sel) Color.White else Frost.Ink, fontSize = 13.sp)
+        if (open) {
+            // How the PC sees it: detected from the image, can be overridden.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Muted("Shown as", Modifier.padding(end = 4.dp))
+                for ((m, label) in listOf(Mode.DISK to "USB disk", Mode.CD to "CD")) {
+                    val sel = mode == m
+                    Text(label, Modifier.clip(Pill).background(if (sel) Frost.Ink else Frost.Field).clickable(enabled = !active, role = Role.RadioButton) { vm.bootSetMode(img, m) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp), color = if (sel) Color.White else Frost.Ink, fontSize = 13.sp)
+                }
             }
-        }
-        if (mode == Mode.CD) Muted("CD mode is for ISOs that only work as a CD (e.g. Windows installers). Some PCs don't boot USB CDs; if it isn't offered, try USB disk.", color = Frost.Muted)
+            if (mode == Mode.CD) Muted("For ISOs that only work as a CD, like Windows installers. If the PC doesn't offer it, try USB disk.", color = Frost.Muted)
 
-        if (img.savedBytes != null) {
-            FrostSwitch(useSaved, { useSaved = it }, "Use saved space (${size(img.savedBytes)})")
-        } else if (!addSaved) {
-            GhostButton("Add saved space…", { addSaved = true }, enabled = !busy)
-        } else {
-            Text("Saved space: ${gb.toInt()} GB", style = MaterialTheme.typography.titleSmall)
-            Muted("For live systems (Kali, Ubuntu, Debian): files and settings survive reboots. It only uses phone storage as it fills up.")
-            Slider(gb, { gb = it }, valueRange = 1f..64f, steps = 62)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InkButton("Create", { vm.bootCreateSaved(img, gb.toInt()); addSaved = false }, Modifier.weight(1f), enabled = !busy)
-                GhostButton("Cancel", { addSaved = false })
+            if (img.savedBytes != null) {
+                FrostSwitch(useSaved, { useSaved = it }, "Use saved space (${size(img.savedBytes)})")
+            } else if (!addSaved) {
+                GhostButton("Add saved space…", { addSaved = true }, enabled = !busy)
+            } else {
+                Text("Saved space: ${gb.toInt()} GB", style = MaterialTheme.typography.titleSmall)
+                Muted("Live systems keep files and settings across reboots. Uses phone storage only as it fills.")
+                Slider(gb, { gb = it }, valueRange = 1f..64f, steps = 62)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InkButton("Create", { vm.bootCreateSaved(img, gb.toInt()); addSaved = false }, Modifier.weight(1f), enabled = !busy)
+                    GhostButton("Cancel", { addSaved = false })
+                }
             }
-        }
-
-        if (!active) InkButton(if (vm.bootBusy == "Starting…") "Starting…" else "Boot from this", { vm.bootStart(img, useSaved) }, Modifier.fillMaxWidth(), enabled = !busy)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            GhostButton("Delete image", { confirm = img.path to "the image" }, enabled = !busy && !active)
-            if (img.savedBytes != null) GhostButton("Delete saved space", { confirm = img.savedPath to "the saved space" }, enabled = !busy && !active)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                GhostButton("Delete image", { confirm = img.path to "the image" }, enabled = !busy && !active)
+                if (img.savedBytes != null) GhostButton("Delete saved space", { confirm = img.savedPath to "the saved space" }, enabled = !busy && !active)
+            }
         }
     }
     confirm?.let { (path, what) ->
@@ -163,13 +170,13 @@ private fun RescueSystemCard(vm: RodinViewModel) {
                 ready -> Badge("Ready", Tone.Good)
             }
         }
-        Muted("For a PC whose Linux or Windows won't start: it starts a small Lifeline system from the phone instead, and the AI repairs the PC's disks over the cable. Nothing to type on the PC; works with Secure Boot on.",
+        Muted("When Linux or Windows won't start: the PC starts a small Lifeline system from the phone, and the AI repairs it over the cable. Works with Secure Boot.",
             color = if (onInk) Frost.OnInkMuted else Frost.Slate)
         if (vm.rescueStatus.isNotBlank()) Text(vm.rescueStatus, style = MaterialTheme.typography.bodyMedium, color = if (onInk) Color.White else Frost.Ink)
         vm.rescueProgress?.let { LinearProgressIndicator(progress = { it }, Modifier.fillMaxWidth(), color = Frost.Ink) }
         when {
             vm.rescueMode || (vm.rescueBusy && ready) -> StopButton("End the rescue session", { vm.rescueStop() }, Modifier.fillMaxWidth())
-            !ready && !com.rodinrescue.usb.RescueSystem.published -> Muted("Not published yet: the first version is being built and tested.", color = Frost.Muted)
+            !ready && !com.rodinrescue.usb.RescueSystem.published -> Muted("Not available yet.", color = Frost.Muted)
             !ready -> InkButton(if (vm.rescueBusy) "Downloading…" else "Download (about 450 MB, checked)", { vm.rescueDownload() }, Modifier.fillMaxWidth(), enabled = !vm.rescueBusy)
             else -> InkButton("Start the rescue system", { vm.rescueStart() }, Modifier.fillMaxWidth(), enabled = !vm.rescueBusy && vm.bootBusy == null)
         }

@@ -85,6 +85,40 @@ private fun DeviceList(vm: RodinViewModel, open: (String) -> Unit, openChat: () 
         SectionLabel("Older sessions", Modifier.padding(top = 8.dp))
         loose.forEach { ConversationRow(vm, it, null, openChat) }
     }
+    ManualConnection(vm)
+}
+
+/** Connecting to a computer by hand (address, user, key or password), for one Lifeline's setup didn't prepare. */
+@Composable
+private fun ManualConnection(vm: RodinViewModel) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(Pill).clickable(role = Role.Button) { open = !open }.padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text("Connect by hand (advanced)", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = Frost.Slate)
+        Icon(if (open) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, null, tint = Frost.Slate)
+    }
+    if (!open) return
+    FrostCard {
+        FrostField("Computer address", vm.host, { vm.host = it }, mono = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FrostField("Port", vm.port, { vm.port = it }, Modifier.weight(1f), number = true, mono = true)
+            FrostField("User", vm.user, { vm.user = it }, Modifier.weight(2f))
+        }
+        FrostSwitch(vm.useKey, { vm.useKey = it }, if (vm.useKey) "Private key" else "Password")
+        if (vm.useKey) {
+            FrostField("Private key (PEM / OpenSSH)", vm.sshKey, { vm.sshKey = it }, singleLine = false, mono = true)
+            FrostField("Key passphrase (not stored)", vm.keyPassphrase, { vm.keyPassphrase = it }, secret = true)
+        } else FrostField("SSH password", vm.sshPassword, { vm.sshPassword = it }, secret = true)
+        val hostId = "${vm.host.trim()}:${vm.port.toIntOrNull() ?: 22}"
+        val pinned = vm.settings.pinnedHostKey(hostId)
+        Muted(if (pinned != null) "Known host key: $pinned" else "You'll be asked to check the computer's key on the first connection.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            InkButton("Connect", { vm.connect() }, enabled = vm.host.isNotBlank() && vm.user.isNotBlank())
+            FrostOutlineButton("Check host key", { vm.probeHostKey() }, enabled = vm.host.isNotBlank())
+        }
+        if (pinned != null) GhostButton("Forget the host key", { vm.settings.forgetHostKey(hostId); vm.connState = "Host key forgotten" })
+        if (vm.connState.isNotBlank()) Muted(vm.connState)
+    }
 }
 
 @Composable

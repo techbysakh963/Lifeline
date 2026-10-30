@@ -1,6 +1,14 @@
 package com.rodinrescue.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -19,11 +27,14 @@ import com.rodinrescue.usb.HidController
 /**
  * Type on PC: write, paste or dictate (the phone keyboard's mic) a note, check it, tap Send, and it is typed into
  * whatever window has focus on the PC. Needs only the USB keyboard: no AI, no SSH. New lines are typed as Enter.
+ * The Keys tab drives the keyboard by hand: keys to tap while the PC powers on, single keys and combos.
  */
 @Composable
 fun VoiceTypeScreen(vm: RodinViewModel, back: () -> Unit) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { vm.kbRefresh(); focus.requestFocus() }   // focus opens the phone keyboard
+    var keysTab by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { vm.kbRefresh() }
+    LaunchedEffect(keysTab) { if (!keysTab) runCatching { focus.requestFocus() } }   // focus opens the phone keyboard
     DisposableEffect(Unit) { vm.kbScreenOpened(); onDispose { vm.kbScreenClosed() } }   // keyboard auto-off
     val on = vm.kbState == HidController.State.ON
     val typing = vm.voiceProgress
@@ -37,10 +48,20 @@ fun VoiceTypeScreen(vm: RodinViewModel, back: () -> Unit) {
             }
             if (on) Badge("Keyboard on", Tone.Good, dot = true) else Badge("Keyboard off", Tone.Neutral)
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((k, label) in listOf(false to "Text", true to "Keys"))
+                Text(label, Modifier.clip(Pill).background(if (keysTab == k) Frost.Ink else Frost.Field).clickable(role = Role.Tab) { keysTab = k }
+                    .padding(horizontal = 16.dp, vertical = 8.dp), color = if (keysTab == k) Color.White else Frost.Ink, style = MaterialTheme.typography.labelLarge)
+        }
         if (!on) FrostCard {
             Muted("Plug the phone into the PC and turn the USB keyboard on. The text goes to whatever window has focus on the PC.")
             if (vm.kbState == HidController.State.ERROR || vm.kbState == HidController.State.UNSUPPORTED) Muted(vm.kbMessage, color = Frost.Bad)
             InkButton(if (vm.kbBusy) "Turning on…" else "Turn keyboard on", { vm.kbToggle(true) }, Modifier.fillMaxWidth(), enabled = !vm.kbBusy)
+        }
+
+        if (keysTab) {
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 12.dp + LocalNavSpace.current), verticalArrangement = Arrangement.spacedBy(10.dp)) { ManualKeys(vm) }
+            return@Column
         }
 
         OutlinedTextField(vm.voiceNote, vm::voiceEdit, Modifier.fillMaxWidth().weight(1f).focusRequester(focus),

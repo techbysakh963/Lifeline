@@ -43,7 +43,7 @@ fun SerialScreen(vm: RodinViewModel, back: () -> Unit, openChat: () -> Unit) {
             if (vm.serialOn) Badge("On", Tone.Good, dot = true)
         }
         if (vm.serialSupported == false) {
-            FrostCard { Muted("This phone's kernel was built without the USB serial function (CDC-ACM). Everything else in Lifeline works normally.") }
+            FrostCard { Muted("This phone's kernel can't act as a USB serial port. Everything else in Lifeline works normally.") }
             return@Column
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {

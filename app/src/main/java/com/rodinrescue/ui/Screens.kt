@@ -25,10 +25,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Album
+import androidx.compose.material.icons.outlined.Cable
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.*
@@ -54,7 +58,7 @@ import com.rodinrescue.security.Risk
 internal fun copy(ctx: Context, text: String) {
     (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("lifeline", text))
 }
-private fun share(ctx: Context, text: String) {
+internal fun share(ctx: Context, text: String) {
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }, "Export"))
 }
 
@@ -75,15 +79,13 @@ internal fun ScreenColumn(content: @Composable ColumnScope.() -> Unit) =
         verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
 
 // ───────────────────────────── Home ─────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () -> Unit, openChat: () -> Unit, openAi: () -> Unit, openHistory: () -> Unit, openSettings: () -> Unit, openDevices: () -> Unit) {
+fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () -> Unit, openSerial: () -> Unit, openBoot: () -> Unit, openChat: () -> Unit, openAi: () -> Unit, openSettings: () -> Unit, openDevices: () -> Unit) {
     val ctx = LocalContext.current
-    var manual by remember { mutableStateOf(false) }
     var support by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.checkRootStep(); vm.kbRefresh(); vm.bootStatusRefresh(); vm.rescueResume(); while (true) { vm.refreshSetup(); kotlinx.coroutines.delay(3000) } }
     val ai = aiReady(vm)
-    val vpnOk = !vm.vpnActive || vm.bypassOk
     // Pull down to re-check root, the USB link, the VPN rule, saved devices and whether the SSH link is alive.
     val pull = rememberPullToRefreshState()
     PullToRefreshBox(vm.refreshing, { vm.refreshAll() }, Modifier.fillMaxSize(), state = pull,
@@ -96,16 +98,15 @@ fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () 
             LifelineMark(30.dp)
             Text(Brand.NAME, Modifier.weight(1f), fontFamily = Unbounded, fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = (-0.4).sp)
             CoffeeButton({ support = true })
-            CircleIconButton(Icons.Outlined.History, "History", openHistory)
             CircleIconButton(Icons.Outlined.Settings, "Settings", openSettings)
         }
         if (support) SupportDialog { support = false }
 
-        LiquidHero {
+        LiquidHero(height = 210.dp) {
             GlassBadge(
                 if (vm.connected) (vm.targetInfo.ifBlank { vm.host }.lines().first().take(34) + " linked") else "Not connected",
                 if (vm.connected) Color(0xFF4ADE80) else Frost.Warn)
-            Text(if (vm.connected) "Bring it back\nto life." else "Plug in.\nWe'll do the rest.", style = MaterialTheme.typography.displaySmall, color = Color.White)
+            Text(if (vm.connected) "Bring it back\nto life." else "Plug in.\nWe'll do the rest.", style = MaterialTheme.typography.headlineSmall, color = Color.White)
             when {
                 vm.connected && ai -> ChromeButton("Start rescue", { vm.newDiagnosis(); openChat() }, Modifier.fillMaxWidth())
                 vm.connected -> ChromeButton("Set up an AI brain first", openAi, Modifier.fillMaxWidth())
@@ -113,56 +114,22 @@ fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () 
             }
         }
 
-        val ready = listOf(vm.rootOk == true, vm.tetherOk, vpnOk, ai).count { it }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-            Text("Health check", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Muted("$ready of 4 ready")
+        // What SSH rescue needs, as one row. The ways in further down need none of the cable/VPN items.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            StatusPill(if (vm.rootOk == false) "Allow root" else vm.rootManager.takeIf { vm.rootOk == true && it != "your root manager" } ?: "Root", vm.rootOk)
+            StatusPill(if (vm.tetherOk) "USB link" else "No cable", vm.tetherOk)
+            if (vm.vpnActive) StatusPill(if (vm.bypassOk) "VPN routed" else "VPN", vm.bypassOk)
+            StatusPill(if (ai) providerShort(vm) else "Set up AI", ai, onClick = openAi)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HealthTile("Root", if (vm.rootOk == true) vm.rootManager.takeIf { it != "your root manager" } ?: "Ready" else if (vm.rootOk == false) "Allow root" else "Checking…", vm.rootOk, Modifier.weight(1f))
-            HealthTile("USB link · SSH", if (vm.tetherOk) (vm.usbIfaces.firstOrNull()?.name ?: "On") else "Plug in cable", vm.tetherOk, Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HealthTile(if (vm.vpnActive) "VPN · SSH" else "Network · SSH", if (!vm.vpnActive) "No VPN" else if (vm.bypassOk) "Routed around" else "Needs rule", vpnOk, Modifier.weight(1f))
-            HealthTile("AI brain", if (ai) providerShort(vm) else "Set up →", if (ai) true else null, Modifier.weight(1f), dark = !ai, onClick = openAi)
-        }
-        // Say which checks are only for SSH, so a VPN warning doesn't look like it blocks keyboard rescue.
-        Muted("USB link and VPN matter only for SSH rescue. Keyboard rescue, Type on PC and Boot work without them.", color = Frost.Muted)
-        Muted(vm.connState + if (vm.connected) "  ·  ${vm.diagnosticStatus}" else "")
+        if (vm.connected) Muted(vm.connState + "  ·  ${vm.diagnosticStatus}")
+        else if (vm.connState.isNotBlank() && vm.connState != "Disconnected") Muted(vm.connState)
 
         // Lifeline's USB extras are visible while on, with a one-tap off (they must never linger unnoticed).
         if (vm.kbState == com.rodinrescue.usb.HidController.State.ON) UsbOnBar("USB keyboard is on", "Turns itself off when not in use", "Turn off") { vm.kbToggle(false) }
         if (vm.bootStatus?.on == true) UsbOnBar("Boot drive is on", "The PC sees the phone as a USB drive", "Stop") { vm.bootStop() }
+        if (vm.serialOn) UsbOnBar("USB serial is on", "The PC sees a serial port", "Turn off") { vm.serialToggle(false) }
 
-        // Type on PC + keyboard rescue need the USB keyboard function; hidden on kernels without it (e.g. LineageOS S9).
-        val kbPossible = vm.kbState != com.rodinrescue.usb.HidController.State.UNSUPPORTED
-        // Type on PC: one tap from Home (also a launcher shortcut: long-press the app icon).
-        if (kbPossible) Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Frost.Card).border(1.dp, Frost.Line, RoundedCornerShape(18.dp))
-            .clickable(role = Role.Button, onClick = openVoice).padding(14.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(40.dp).clip(CircleShape).background(Frost.Ink), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Keyboard, null, Modifier.size(20.dp), tint = Color.White)
-            }
-            Column(Modifier.weight(1f)) {
-                Text("Type on PC", style = MaterialTheme.typography.titleSmall)
-                Muted("Write, paste or dictate on the phone; it's typed on the PC (phone as USB keyboard).")
-            }
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(18.dp), tint = Frost.Slate)
-        }
-
-        // Fallback when SSH can't work: the AI drives the PC through the camera + USB keyboard.
-        if (!vm.connected && kbPossible) FrostCard {
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Frost.Field).clickable(role = Role.Button, onClick = openKbRescue).padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("PC stuck before Linux or Windows starts?", style = MaterialTheme.typography.titleSmall)
-                    Muted("BIOS, GRUB, Windows recovery, emergency shell, no network: keyboard rescue lets the AI see the screen with the camera and type for you.")
-                }
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(18.dp), tint = Frost.Slate)
-            }
-        }
-
-        // The setup card is below the fold: follow it as it runs (the latest step, an error, or the command to paste),
+        // The setup card is below the hero: follow it as it runs (the latest step, an error, or the command to paste),
         // so a first-time user sees it working instead of pressing the button again.
         val setupStep = remember { BringIntoViewRequester() }
         var stepHeight by remember { mutableIntStateOf(0) }
@@ -174,9 +141,8 @@ fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () 
             }
         }
         val follow = Modifier.bringIntoViewRequester(setupStep).onSizeChanged { stepHeight = it.height }
-        if (!vm.connected && (vm.setupLog.isNotEmpty() || vm.laptopCommand != null || (vm.vpnActive && !vm.bypassOk))) FrostCard {
+        if (!vm.connected && (vm.setupLog.isNotEmpty() || vm.laptopCommand != null)) FrostCard {
             Text("Setup", style = MaterialTheme.typography.titleMedium)
-            if (vm.vpnActive && !vm.bypassOk) Muted("Your VPN is on. “Set up everything for SSH” adds one rule so SSH over the USB cable goes around the VPN (the USB subnet only; nothing else changes). “Restore normal USB mode” removes it.")
             vm.setupLog.forEachIndexed { i, line ->
                 Muted(line, if (vm.laptopCommand == null && i == vm.setupLog.lastIndex) follow else Modifier,
                     color = if (line.startsWith("✗")) Frost.Bad else if (line.startsWith("✓")) Frost.GoodInk else Frost.Slate)
@@ -190,9 +156,9 @@ fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () 
                     FrostOutlineButton("Copy (wget)", { copy(ctx, cmd.replace("curl -fsSL", "wget -qO-")) })
                     GhostButton("Cancel", { vm.cancelLaptopWait() })
                 }
-                StepRow(null, "Waiting for the laptop…", "It installs/enables OpenSSH if missing, authorizes this phone and reports back.", inProgress = true)
+                StepRow(null, "Waiting for the laptop…", "It turns on SSH if needed, authorizes this phone and reports back.", inProgress = true)
                 FrostSwitch(vm.serialLogin, { vm.updateSerialLogin(it) }, "Also allow login over USB serial")
-                Muted("Off by default. On: the laptop also gets a login prompt (your password) on this phone's USB serial port, for when its network or SSH breaks later. Only this phone gets it; Remove from this laptop takes it away. Set it before pasting the command.", color = Frost.Muted)
+                Muted("A login prompt on this phone's USB serial port, for when the PC's network breaks later. Set it before pasting.", color = Frost.Muted)
             } }
         }
 
@@ -212,44 +178,40 @@ fun DashboardScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () 
         }
         else if (vm.canReconnectLastLaptop) FrostCard {
             Text("Set up before?", style = MaterialTheme.typography.titleMedium)
-            Muted("After re-plugging, the laptop usually gets a new address. This finds it and reconnects with no laptop-side step.")
+            Muted("After re-plugging, the laptop usually gets a new address. This finds it again.")
             InkButton(if (vm.scanning) "Scanning…" else "Reconnect to last laptop", { vm.reconnectKnownLaptop() }, Modifier.fillMaxWidth(), enabled = vm.user.isNotBlank() && !vm.scanning)
         }
 
-        Row(Modifier.fillMaxWidth().clip(Pill).clickable(role = Role.Button) { manual = !manual }.padding(vertical = 10.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text("Manual connection (advanced)", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = Frost.Slate)
-            Icon(if (manual) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, null, tint = Frost.Slate)
+        // When SSH isn't possible. Keyboard ones need the USB keyboard function: hidden on kernels without it.
+        val kbPossible = vm.kbState != com.rodinrescue.usb.HidController.State.UNSUPPORTED
+        SectionLabel("Other ways in", Modifier.padding(top = 4.dp))
+        val ways = buildList<@Composable (Modifier) -> Unit> {
+            if (kbPossible) add { m -> WayTile(Icons.Outlined.CameraAlt, "Keyboard rescue", "PC stuck before the OS starts", openKbRescue, m) }
+            if (kbPossible) add { m -> WayTile(Icons.Outlined.Keyboard, "Type on PC", "Your phone as its keyboard", openVoice, m) }
+            if (vm.serialSupported != false) add { m -> WayTile(Icons.Outlined.Cable, "USB serial", "Log in without network", openSerial, m) }
+            add { m -> WayTile(Icons.Outlined.Album, "Boot drive", "Start the PC from the phone", openBoot, m) }
         }
-        if (manual) FrostCard {
-            FrostField("Laptop IP / host", vm.host, { vm.host = it }, mono = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FrostField("Port", vm.port, { vm.port = it }, Modifier.weight(1f), number = true, mono = true)
-                FrostField("User", vm.user, { vm.user = it }, Modifier.weight(2f))
+        ways.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { it(Modifier.weight(1f)) }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
-            FrostSwitch(vm.useKey, { vm.useKey = it }, if (vm.useKey) "Private key auth" else "Password auth")
-            if (vm.useKey) {
-                FrostField("Private key (PEM / OpenSSH)", vm.sshKey, { vm.sshKey = it }, singleLine = false, mono = true)
-                FrostField("Key passphrase (not stored)", vm.keyPassphrase, { vm.keyPassphrase = it }, secret = true)
-            } else FrostField("SSH password", vm.sshPassword, { vm.sshPassword = it }, secret = true)
-            val hostId = "${vm.host.trim()}:${vm.port.toIntOrNull() ?: 22}"
-            val pinned = vm.settings.pinnedHostKey(hostId)
-            Muted(if (pinned != null) "Pinned host key: $pinned" else "Host key not pinned yet — you will be asked to verify its fingerprint.")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InkButton("Connect", { vm.connect() }, enabled = vm.host.isNotBlank() && vm.user.isNotBlank())
-                FrostOutlineButton("Check host key", { vm.probeHostKey() }, enabled = vm.host.isNotBlank())
-            }
-            if (pinned != null) GhostButton("Forget pinned host key", { vm.settings.forgetHostKey(hostId); vm.connState = "Host key forgotten" })
-        }
-
-        FrostCard {
-            Text("sudo password for repairs", style = MaterialTheme.typography.titleSmall)
-            FrostField("sudo password (memory only; never sent to AI)", vm.sudoPassword, { vm.sudoPassword = it }, secret = true)
-            Muted("Diagnosis needs no sudo. Repairs run with sudo only after you approve each command.")
         }
     }
     }
 }
+
+/** One of Home's "other ways in": icon, name and a few words, the whole tile tappable. */
+@Composable
+private fun WayTile(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, hint: String, onClick: () -> Unit, modifier: Modifier = Modifier) =
+    Column(modifier.clip(RoundedCornerShape(20.dp)).background(Frost.Card).border(1.dp, Frost.Line, RoundedCornerShape(20.dp))
+        .clickable(role = Role.Button, onClick = onClick).padding(14.dp).heightIn(min = 84.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(32.dp).clip(CircleShape).background(Frost.Ink), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(17.dp), tint = Color.White)
+        }
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Muted(hint, maxLines = 2)
+    }
 
 // ───────────────────────────── Rescue chat ─────────────────────────────
 @Composable
@@ -264,9 +226,7 @@ fun ChatScreen(vm: RodinViewModel, openKbRescue: () -> Unit = {}, openTerminal: 
             Column(Modifier.weight(1f)) {
                 Text(vm.targetInfo.ifBlank { "Rescue session" }.lines().first().trimEnd(' ', '·'), style = MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val u = vm.usage
-                Muted("${vm.diagnosticStatus} · ${providerShort(vm)} · ${u.promptTokens}/${u.completionTokens} tokens" + if (u.cachedTokens > 0) " (${u.cachedTokens} cached)" else "",
-                    maxLines = 1)
+                Muted("${vm.diagnosticStatus} · ${providerShort(vm)}", maxLines = 1)
             }
             AutoApproveChip(vm)
             if (vm.running) StopButton("Stop", { vm.stopAll() })
@@ -327,9 +287,16 @@ internal fun ChatRow(item: ChatItem, photo: (String) -> java.io.File = { java.io
                 .padding(horizontal = 16.dp, vertical = 12.dp), color = Color.White, style = MaterialTheme.typography.bodyMedium) }
         }
         is ChatItem.AssistantMsg -> AssistantCard(item.text)
-        is ChatItem.ToolCallItem -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Tag(item.name)
-            if (item.args.isNotBlank() && item.args != "{}") Muted(item.args.take(160), Modifier.weight(1f), color = Frost.Muted)
+        // One readable line (what the AI says it's doing); tap for the tool and its raw arguments.
+        is ChatItem.ToolCallItem -> {
+            var open by remember { mutableStateOf(false) }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { open = !open }.padding(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(Frost.Pewter))
+                    Muted(toolLine(item.name, item.args), Modifier.weight(1f), maxLines = if (open) Int.MAX_VALUE else 2)
+                }
+                if (open) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Tag(item.name); if (item.args.isNotBlank() && item.args != "{}") Muted(item.args, Modifier.weight(1f), color = Frost.Muted) }
+            }
         }
         is ChatItem.Notice -> Muted(item.text, color = if (item.error) Frost.Bad else Frost.Slate)
         is ChatItem.KeysItem -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -361,6 +328,28 @@ internal fun ChatRow(item: ChatItem, photo: (String) -> java.io.File = { java.io
             Badge(if (item.auto) "Auto-approved" else if (item.approved) "Approved" else "Rejected", if (item.auto) Tone.Warn else if (item.approved) Tone.Good else Tone.Bad)
             Mono(item.req.command.take(160), Modifier.weight(1f), color = Frost.Slate, size = 11)
         }
+    }
+}
+
+/** What a tool call is for, in words: the AI's own "purpose" when it gave one, otherwise the tool's job. */
+internal fun toolLine(name: String, args: String): String {
+    Regex("\"purpose\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").find(args)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+        ?.let { return it.replace("\\\"", "\"").replaceFirstChar { c -> c.uppercase() } }
+    return when (name) {
+        "get_system_information" -> "Reading system information"
+        "check_systemd_services" -> "Checking services"
+        "inspect_display_manager" -> "Checking the login screen"
+        "read_system_logs" -> "Reading the system logs"
+        "run_readonly_command" -> "Looking around"
+        "check_disk_space" -> "Checking disk space"
+        "check_graphics_drivers" -> "Checking the graphics drivers"
+        "inspect_boot_errors" -> "Reading boot errors"
+        "request_privileged_command" -> "Asking to run a command as admin"
+        "suggest_repair" -> "Proposing a repair"
+        "apply_approved_repair" -> "Applying the approved repair"
+        "verify_repair" -> "Checking that the fix worked"
+        "look_at_screen", "wait_for_screen" -> "Looking at the screen"
+        else -> name.replace('_', ' ').replaceFirstChar { it.uppercase() }
     }
 }
 
@@ -405,6 +394,15 @@ fun ApprovalDialog(vm: RodinViewModel) {
                 Text(when { req.id.startsWith("k") -> "Sent to the PC as keystrokes (USB keyboard)"; req.id.startsWith("t") -> "Runs on the PC over USB serial (text mode)"; else -> "Command (runs as root via sudo)" },
                     style = MaterialTheme.typography.labelMedium, color = Frost.OnInkMuted)
                 Mono(req.command, Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Frost.Ink2).padding(12.dp), color = Color(0xFFE3E7EB))
+                // Asked here, where it's needed, instead of on Home. Memory only; never sent to the AI.
+                if (!req.id.startsWith("k") && !req.id.startsWith("t") && vm.user.trim() != "root") {
+                    OutlinedTextField(vm.sudoPassword, { vm.sudoPassword = it }, singleLine = true, shape = RoundedCornerShape(14.dp),
+                        placeholder = { Text("PC password, if sudo asks (not saved, never sent to the AI)", color = Frost.OnInkMuted) },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = GeistMono, color = Color.White),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.White, unfocusedBorderColor = Color(0xFF3A3F46), cursorColor = Color.White))
+                }
                 if (req.needsTypedConfirm) {
                     Text(if (req.risk == Risk.FORBIDDEN) "Lifeline normally never does this. Only if YOU asked for exactly this, type OVERRIDE to enable approval."
                          else "This is destructive or irreversible. Type DELETE to enable approval.", color = Frost.BadOnInk, style = MaterialTheme.typography.bodySmall)
@@ -472,62 +470,8 @@ fun TerminalScreen(vm: RodinViewModel) {
             })
             InkButton("Run", { vm.sendShell(input); input = ""; histIdx = -1 }, enabled = vm.shellOpen)
         }
-        Muted("Manual terminal: commands here are NOT policy-checked (you are in control). The AI agent never uses this shell.", Modifier.padding(bottom = 8.dp))
+        Muted("Your own terminal: commands here skip Lifeline's safety checks. The AI never uses it.", Modifier.padding(bottom = 8.dp))
     }
-}
-
-// ───────────────────────────── USB Tools ─────────────────────────────
-@Composable
-fun UsbToolsScreen(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () -> Unit = {}, openSerial: () -> Unit = {}) {
-    val ctx = LocalContext.current
-    var confirmTether by remember { mutableStateOf(false) }
-    ScreenColumn {
-        ScreenHeader("USB tools", "What the phone can be for the PC")
-        FrostCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Root (${vm.rootManager.takeIf { it != "your root manager" } ?: "su"})", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                if (vm.rootOk == true) Badge("Granted", Tone.Good, dot = true)
-            }
-            Muted(vm.rootStatus)
-            FrostOutlineButton("Check root access", { vm.checkRoot() })
-        }
-        FrostCard {
-            Text("USB modes", style = MaterialTheme.typography.titleMedium)
-            ModeRow("USB network + SSH (RNDIS/NCM)", "Works — verified on your phone, also with a VPN on. Use Home → Set up everything for SSH.", Tone.Good, "Works")
-            ModeRow("USB HID keyboard", "Verified on your phone: a boot keyboard the PC sees next to ADB / tethering. Card below.", Tone.Good, "Works")
-            ModeRow("USB serial (CDC ACM)", "A serial port to the PC: a shell over its login prompt, without network. Card below.", Tone.Good, "New")
-            ModeRow("Mass storage / boot drive", "Works — the PC boots an ISO from the phone, or Lifeline's own rescue system. Use the Boot tab.", Tone.Good, "Works")
-            InkButton("Turn on USB tethering", { confirmTether = true }, Modifier.fillMaxWidth(), enabled = !vm.usbBusy)
-            FrostOutlineButton("Restore normal USB mode", { vm.restoreUsb() }, Modifier.fillMaxWidth(), enabled = !vm.usbBusy)
-        }
-        KeyboardCard(vm, openKbRescue, openVoice)
-        FrostCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("USB serial", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                if (vm.serialOn) Badge("On", Tone.Good, dot = true)
-            }
-            Muted("For a PC whose system starts but whose network or SSH is broken: the phone becomes a serial port, and you log in to the PC through it.")
-            InkButton("Open USB serial", openSerial, Modifier.fillMaxWidth())
-        }
-        FrostCard {
-            Text("Capability inspection", style = MaterialTheme.typography.titleMedium)
-            Muted("Read-only. Reads UDC, configfs gadget, kernel config and USB role. Share the output to confirm HID / ACM support on your kernel.")
-            InkButton("Inspect USB gadget support", { vm.inspectUsb() }, enabled = !vm.usbBusy)
-            if (vm.usbReport.isNotBlank()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FrostOutlineButton("Copy", { copy(ctx, vm.usbReport) }); FrostOutlineButton("Export", { share(ctx, vm.usbReport) })
-                }
-                TerminalBlock(Modifier.heightIn(max = 360.dp)) {
-                    Column(Modifier.verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())) { Mono(vm.usbReport) }
-                }
-            }
-        }
-    }
-    if (confirmTether) AlertDialog(onDismissRequest = { confirmTether = false }, containerColor = Frost.Card, shape = RoundedCornerShape(28.dp),
-        title = { Text("Switch USB to tethering?", style = MaterialTheme.typography.titleLarge) },
-        text = { Text("Opens Settings → Hotspot & tethering and flips the USB tethering switch for you (root). File transfer (MTP) is replaced by tethering until you press “Restore normal USB mode”.", style = MaterialTheme.typography.bodyMedium) },
-        confirmButton = { InkButton("Switch", { confirmTether = false; vm.enableTether() }) },
-        dismissButton = { FrostOutlineButton("Cancel", { confirmTether = false }) })
 }
 
 @Composable
@@ -542,61 +486,34 @@ private fun UsbOnBar(title: String, sub: String, action: String, onAction: () ->
         ChromeButton(action, onAction)
     }
 
+/** Drive the PC's keyboard yourself (Type on PC › Keys): keys to tap while it powers on, single keys and combos. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun KeyboardCard(vm: RodinViewModel, openKbRescue: () -> Unit, openVoice: () -> Unit) {
-    LaunchedEffect(Unit) { vm.kbRefresh() }
-    DisposableEffect(Unit) { vm.kbScreenOpened(); onDispose { vm.kbScreenClosed() } }   // keyboard auto-off
+internal fun ManualKeys(vm: RodinViewModel) {
     var confirmReboot by remember { mutableStateOf(false) }
     val on = vm.kbState == com.rodinrescue.usb.HidController.State.ON
     val ready = on && !vm.kbBusy
-    FrostCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("USB keyboard", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            when (vm.kbState) {
-                com.rodinrescue.usb.HidController.State.ON -> Badge("On", Tone.Good, dot = true)
-                com.rodinrescue.usb.HidController.State.UNSUPPORTED -> Badge("Unsupported", Tone.Bad)
-                com.rodinrescue.usb.HidController.State.ERROR -> Badge("Error", Tone.Warn)
-                else -> Badge("Off", Tone.Neutral)
-            }
+    SectionLabel("Tap repeatedly while the PC powers on")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for ((k, hint) in listOf("F2" to "setup", "del" to "setup", "F12" to "boot menu", "esc" to "menu", "F10" to "HP", "F9" to "HP boot")) {
+            val active = vm.kbSpamming == k
+            KeyChip(if (active) "Stop ${k.uppercase()}" else "${k.replaceFirstChar { it.uppercase() }} · $hint", on, active) { vm.kbSpam(k) }
         }
-        Muted("The PC sees the phone as a keyboard. Works where SSH can't: BIOS / UEFI setup, boot menus, GRUB and text consoles, even with no OS. US layout.")
-        val supported = vm.kbState != com.rodinrescue.usb.HidController.State.UNSUPPORTED
-        InkButton("Let the AI drive · keyboard rescue", openKbRescue, Modifier.fillMaxWidth(), enabled = supported)
-        Muted("The AI watches the PC's screen through the camera and types for you. Below: drive it yourself.", color = Frost.Muted)
-        FrostOutlineButton("⌨ Type on PC: write, paste or dictate", openVoice, Modifier.fillMaxWidth(), enabled = supported)
-        FrostSwitch(on, { vm.kbToggle(it) }, if (vm.kbBusy && !on) "Turning on… (the PC sees the phone reconnect)" else "Act as a USB keyboard")
-        if (on) {
-            SectionLabel("Tap repeatedly while the PC powers on")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((k, hint) in listOf("F2" to "setup", "del" to "setup", "F12" to "boot menu", "esc" to "menu", "F10" to "HP", "F9" to "HP boot")) {
-                    val active = vm.kbSpamming == k
-                    KeyChip(if (active) "Stop ${k.uppercase()}" else "${k.replaceFirstChar { it.uppercase() }} · $hint", on, active) { vm.kbSpam(k) }
-                }
-            }
-            SectionLabel("Keys")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (k in listOf("esc", "F1", "F2", "F5", "F7", "F8", "F10", "F11", "F12", "tab", "enter", "space", "backspace", "del", "up", "down", "left", "right", "pgup", "pgdn", "home", "end"))
-                    KeyChip(KEY_LABELS[k] ?: k.replaceFirstChar { it.uppercase() }, ready) { vm.kbPress(k) }
-            }
-            SectionLabel("Combos")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                KeyChip("Ctrl+Alt+F3 · text login", ready) { vm.kbPress("ctrl+alt+f3") }
-                KeyChip("Ctrl+Alt+F1", ready) { vm.kbPress("ctrl+alt+f1") }
-                KeyChip("Ctrl+C", ready) { vm.kbPress("ctrl+c") }
-                KeyChip("Shift+Tab", ready) { vm.kbPress("shift+tab") }
-                KeyChip("Ctrl+Alt+Del · reboot", ready) { confirmReboot = true }
-            }
-            SectionLabel("Type text")
-            FrostField("Text to type on the PC", vm.kbText, { vm.kbText = it }, mono = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                InkButton("Type + Enter", { vm.kbType(true) }, Modifier.weight(1f), enabled = ready && vm.kbText.isNotEmpty())
-                FrostOutlineButton("Type", { vm.kbType(false) }, enabled = ready && vm.kbText.isNotEmpty())
-            }
-            Muted("Don't type passwords here unless you mean to: the text is sent as keystrokes to whatever has focus on the PC.", color = Frost.Muted)
-        }
-        if (vm.kbMessage.isNotBlank()) Muted(vm.kbMessage, color = if (vm.kbState == com.rodinrescue.usb.HidController.State.ERROR) Frost.Bad else Frost.Slate)
     }
+    SectionLabel("Keys")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (k in listOf("esc", "F1", "F2", "F5", "F7", "F8", "F10", "F11", "F12", "tab", "enter", "space", "backspace", "del", "up", "down", "left", "right", "pgup", "pgdn", "home", "end"))
+            KeyChip(KEY_LABELS[k] ?: k.replaceFirstChar { it.uppercase() }, ready) { vm.kbPress(k) }
+    }
+    SectionLabel("Combos")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        KeyChip("Ctrl+Alt+F3 · text login", ready) { vm.kbPress("ctrl+alt+f3") }
+        KeyChip("Ctrl+Alt+F1", ready) { vm.kbPress("ctrl+alt+f1") }
+        KeyChip("Ctrl+C", ready) { vm.kbPress("ctrl+c") }
+        KeyChip("Shift+Tab", ready) { vm.kbPress("shift+tab") }
+        KeyChip("Ctrl+Alt+Del · reboot", ready) { confirmReboot = true }
+    }
+    if (vm.kbMessage.isNotBlank()) Muted(vm.kbMessage, color = if (vm.kbState == com.rodinrescue.usb.HidController.State.ERROR) Frost.Bad else Frost.Slate)
     if (confirmReboot) AlertDialog(onDismissRequest = { confirmReboot = false }, containerColor = Frost.Card, shape = RoundedCornerShape(28.dp),
         title = { Text("Send Ctrl+Alt+Del?", style = MaterialTheme.typography.titleLarge) },
         text = { Text("On most PCs this reboots immediately (in BIOS, GRUB or a text console). Unsaved work on the PC is lost.", style = MaterialTheme.typography.bodyMedium) },
@@ -617,25 +534,17 @@ private fun KeyChip(label: String, enabled: Boolean, active: Boolean = false, on
         Text(label, fontFamily = GeistMono, fontSize = 13.sp, color = when { active -> Color.White; enabled -> Frost.Ink; else -> Frost.Pewter })
     }
 
-@Composable
-private fun ModeRow(title: String, status: String, tone: Tone, badge: String) =
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-        Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.titleSmall); Muted(status) }
-        Badge(badge, tone)
-    }
-
 // ───────────────────────────── AI brain ─────────────────────────────
 @Composable
 fun ProvidersScreen(vm: RodinViewModel) {
     ScreenColumn {
-        ScreenHeader("AI brain", "A subscription you already pay for, or an API key. Both work fully inside Lifeline.")
-        SectionLabel("Subscription · official CLI, built in")
+        ScreenHeader("AI brain", "Your own subscription, or an API key")
         val signedIn = com.rodinrescue.runtime.Ubuntu.Cli.entries.associate { it.id to if (vm.builtinStatus[it]?.subscription == true) "on" else "" }
-        ProviderGrid(vm, listOf(Triple("claude", "Claude", "claude CLI"), Triple("codex", "ChatGPT", "codex CLI"), Triple("geminicli", "Gemini", "agy CLI")), signedIn)
-        SectionLabel("API key · pay per use · works inside the app")
+        SectionLabel("Subscription")
+        ProviderChips(vm, listOf("claude" to "Claude", "codex" to "ChatGPT", "geminicli" to "Gemini"), signedIn)
+        SectionLabel("API key · pay per use")
         val keys = mapOf("claudeapi" to vm.claudeApiKey, "deepseek" to vm.deepseekKey, "openai" to vm.openaiKey, "gemini" to vm.geminiKey)
-        ProviderGrid(vm, listOf(Triple("claudeapi", "Claude", "Console key"), Triple("openai", "OpenAI", "API key")), keys)
-        ProviderGrid(vm, listOf(Triple("gemini", "Gemini", "AI Studio key"), Triple("deepseek", "DeepSeek", "API key")), keys)
+        ProviderChips(vm, listOf("claudeapi" to "Claude", "openai" to "OpenAI", "gemini" to "Gemini", "deepseek" to "DeepSeek"), keys)
         when (vm.provider) {
             "claude", "codex", "geminicli" -> BuiltInCliCard(vm, com.rodinrescue.runtime.Ubuntu.Cli.of(vm.provider)!!)
             "claudeapi" -> ClaudeApiCard(vm)
@@ -651,27 +560,29 @@ fun ProvidersScreen(vm: RodinViewModel) {
             }
             else -> DeepSeekCard(vm)
         }
-        FrostCard {
-            InkButton(if (vm.providerBusy) "Testing…" else "Save & test connection", { vm.testProvider() }, Modifier.fillMaxWidth(), enabled = !vm.providerBusy)
-            Text(vm.providerStatus, style = MaterialTheme.typography.bodyMedium)
-            Muted("Session usage: ${vm.usage.promptTokens} prompt + ${vm.usage.completionTokens} completion tokens" + if (vm.usage.cachedTokens > 0) " (${vm.usage.cachedTokens} cache hits)" else "")
-            Muted("This app never switches providers or falls back to a paid API on its own.")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            InkButton(if (vm.providerBusy) "Testing…" else "Save & test", { vm.testProvider() }, enabled = !vm.providerBusy)
+            Muted(vm.providerStatus, Modifier.weight(1f), maxLines = 2)
         }
+        val u = vm.usage
+        if (u.promptTokens + u.completionTokens > 0) Muted("This session: ${u.promptTokens} in · ${u.completionTokens} out" + if (u.cachedTokens > 0) " · ${u.cachedTokens} cached" else "", color = Frost.Muted)
     }
 }
 
+/** The brains as chips: ink when chosen; a check when set up, a dot when chosen but not set up yet. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProviderGrid(vm: RodinViewModel, items: List<Triple<String, String, String>>, creds: Map<String, String>) =
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items.forEach { (id, name, sub) ->
+private fun ProviderChips(vm: RodinViewModel, items: List<Pair<String, String>>, creds: Map<String, String>) =
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.forEach { (id, name) ->
             val sel = vm.provider == id
             val has = creds[id].orEmpty().isNotBlank()
-            ChoiceTile(name, sub, sel, { vm.provider = id; vm.providerStatus = "Not tested" }, Modifier.weight(1f)) {
-                when {
-                    sel && has -> Badge("Active", Tone.Chrome)
-                    has -> Badge("Ready", Tone.Good)
-                    else -> Badge("Set up", if (sel) Tone.Warn else Tone.Neutral)
-                }
+            Row(Modifier.clip(Pill).background(if (sel) Frost.Ink else Frost.Card).border(1.dp, if (sel) Frost.Ink else Frost.Line, Pill)
+                .clickable(role = Role.RadioButton) { vm.provider = id; vm.providerStatus = "Not tested" }
+                .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (has) Icon(Icons.Filled.Check, "set up", Modifier.size(14.dp), tint = if (sel) Color.White else Frost.Good)
+                else if (sel) Box(Modifier.size(7.dp).clip(CircleShape).background(Frost.Warn))
+                Text(name, style = MaterialTheme.typography.labelLarge, color = if (sel) Color.White else Frost.Ink)
             }
         }
     }
@@ -688,21 +599,33 @@ private fun BuiltInCliCard(vm: RodinViewModel, cli: com.rodinrescue.runtime.Ubun
     val account = when (cli) { com.rodinrescue.runtime.Ubuntu.Cli.CLAUDE -> "Claude"; com.rodinrescue.runtime.Ubuntu.Cli.CODEX -> "ChatGPT"; else -> "Google" }
     val size = when (cli) { com.rodinrescue.runtime.Ubuntu.Cli.CLAUDE -> "about 280 MB"; com.rodinrescue.runtime.Ubuntu.Cli.CODEX -> "about 100 MB"; else -> "about 40 MB" }
     LaunchedEffect(cli, cliOk) { if (cliOk && st == null) vm.builtinRefresh(cli) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    var menu by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(cli.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
         when {
             st?.subscription == true -> Badge("Signed in", Tone.Good, dot = true)
             cliOk -> Badge("Sign in", Tone.Warn)
             else -> Badge("Built in", Tone.Neutral)
         }
+        // Update / Sign out / Remove: rarely needed, so behind ⋯ instead of a row of buttons.
+        if (!vm.builtinBusy && vm.builtinLink == null && ubuntuOk) Box {
+            CircleIconButton(Icons.Outlined.MoreHoriz, "More", { menu = true }, size = 36.dp)
+            DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(18.dp), containerColor = Frost.Card) {
+                if (cliOk) DropdownMenuItem({ Text("Update ${cli.title}") }, { menu = false; vm.builtinInstall(cli) })
+                if (st?.loggedIn == true) DropdownMenuItem({ Text("Sign out") }, { menu = false; vm.builtinSignOut(cli) })
+                DropdownMenuItem({ Text("Remove ${cli.title}", color = Frost.Bad) }, { menu = false; vm.builtinRemove(cli) })
+            }
+        }
     }
-    Muted("Runs inside its own Ubuntu in Lifeline, separate from the other CLIs: no Termux. Downloaded from the publisher and checked against their checksum. Its own tools stay off: it only answers, and Lifeline runs every step with your approval.")
-    StepRow(ubuntuOk, "Ubuntu 24.04", if (ubuntuOk) "Its own copy, in Lifeline's private storage" else "About 30 MB download")
-    StepRow(cliOk, cli.title + (version?.let { " $it" } ?: ""), if (cliOk) "Official, checksum checked" else "${size.replaceFirstChar { it.uppercase() }} download")
-    StepRow(st?.subscription, "Your $account subscription", when {
-        st?.subscription == true -> "Signed in" + (st.plan?.let { " · $it plan" } ?: "")
-        st?.loggedIn == true -> "Signed in without a subscription: not used"
-        else -> "You sign in yourself; Lifeline never sees your password" })
+    if (cliOk && st?.subscription == true) Muted("${cli.title} $version · $account" + (st.plan?.let { " $it" } ?: "") + " · runs in Lifeline's own Ubuntu; it only answers, Lifeline runs each step with your approval.")
+    else {
+        Muted("The official ${cli.title}, in Lifeline's own Ubuntu, checked against the publisher's checksum. It only answers; Lifeline runs each step with your approval.")
+        StepRow(ubuntuOk, "Ubuntu 24.04", if (ubuntuOk) "Installed" else "About 30 MB download")
+        StepRow(cliOk, cli.title + (version?.let { " $it" } ?: ""), if (cliOk) "Installed, checksum checked" else "${size.replaceFirstChar { it.uppercase() }} download")
+        StepRow(st?.subscription, "Your $account subscription", when {
+            st?.loggedIn == true -> "Signed in without a subscription: not used"
+            else -> "You sign in yourself; Lifeline never sees your password" })
+    }
     val link = vm.builtinLink
     if (vm.builtinBusy && mine) {
         Text(vm.builtinStep, style = MaterialTheme.typography.bodyMedium)
@@ -730,15 +653,10 @@ private fun BuiltInCliCard(vm: RodinViewModel, cli: com.rodinrescue.runtime.Ubun
     if (cliOk && st?.subscription == true) CliModelPicker(vm, cli)
     if (cliOk && st?.subscription == true) {
         val on = vm.longSession[cli] == true
-        FrostSwitch(on, { vm.updateLongSession(cli, it) }, "Long session: ${cli.title} remembers the whole rescue")
+        FrostSwitch(on, { vm.updateLongSession(cli, it) }, "Remember the whole rescue")
         vm.cliUsedRev   // re-read after each step
         Muted(vm.cliSessions.getValue(cli).status.takeIf { on && it.isNotEmpty() }
-            ?: if (on) "Faster follow-ups, less of your plan used. Approvals work the same." else "Off: a fresh ${cli.title} run for every step.", color = Frost.Muted)
-    }
-    if (!vm.builtinBusy && link == null && ubuntuOk) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-        if (cliOk) GhostButton("Update ${cli.title}", { vm.builtinInstall(cli) })
-        if (st?.loggedIn == true) GhostButton("Sign out", { vm.builtinSignOut(cli) })
-        GhostButton("Remove ${cli.title}", { vm.builtinRemove(cli) })
+            ?: if (on) "Faster follow-ups, less of your plan used." else "Off: a fresh ${cli.title} run for every step.", color = Frost.Muted)
     }
     if (mine) vm.builtinError?.let { Text(it, color = Frost.Bad, style = MaterialTheme.typography.bodyMedium) }
 }
@@ -754,9 +672,9 @@ private fun CliModelPicker(vm: RodinViewModel, cli: com.rodinrescue.runtime.Ubun
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Frost.Bg).clickable { open = !open; if (open && list == null) vm.refreshCliModels(cli) }
         .padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("Model " + model.ifEmpty { "default" } + " · effort " + effort.ifEmpty { "default" }, fontFamily = GeistMono, fontSize = 13.sp, color = Frost.Ink)
+            Text(model.ifEmpty { "Default model" }, fontFamily = GeistMono, fontSize = 14.sp, color = Frost.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val used = listOfNotNull(p.usedModel, p.usedEffort).joinToString(" · ")
-            Muted(if (used.isNotEmpty()) "In use on the last step: $used" else "In use: shown after the first step")
+            Muted("Effort " + effort.ifEmpty { "default" } + if (used.isNotEmpty()) " · last step: $used" else "", maxLines = 1)
         }
         Text(if (open) "Close" else "Change", fontSize = 13.sp, color = Frost.Ink2)
     }
@@ -790,7 +708,7 @@ private fun CliModelPicker(vm: RodinViewModel, cli: com.rodinrescue.runtime.Ubun
 private fun ClaudeApiCard(vm: RodinViewModel) = FrostCard {
     val ctx = LocalContext.current
     Text("Claude API (Anthropic Console)", style = MaterialTheme.typography.titleMedium)
-    Muted("Works fully inside Lifeline: no Termux. Pay per use with a key from console.anthropic.com (separate from a Claude.ai subscription).")
+    Muted("Pay per use with a key from console.anthropic.com (separate from a Claude.ai subscription).")
     FrostField("API key (Android Keystore encrypted)", vm.claudeApiKey, { vm.claudeApiKey = it }, secret = true)
     SectionLabel("Model")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {

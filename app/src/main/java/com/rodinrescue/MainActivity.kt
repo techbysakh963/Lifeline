@@ -83,7 +83,7 @@ fun RodinRoot(vm: RodinViewModel, shortcutRoute: String? = null, shortcutShown: 
     LaunchedEffect(shortcutRoute) { shortcutRoute?.let { nav.navigate(it) { launchSingleTop = true }; shortcutShown() } }
     val dests = listOf(
         NavItem("dashboard", "Home", Icons.Outlined.Home), NavItem("chat", "Rescue chat", Icons.Outlined.ChatBubbleOutline),
-        NavItem("boot", "Boot drive", Icons.Outlined.Album), NavItem("usb", "USB tools", Icons.Outlined.Usb),
+        NavItem("boot", "Boot drive", Icons.Outlined.Album),
         NavItem("providers", "AI brain", Icons.Outlined.AutoAwesome), NavItem("devices", "Devices", Icons.Outlined.Computer)
     )
     val entry by nav.currentBackStackEntryAsState()
@@ -94,17 +94,16 @@ fun RodinRoot(vm: RodinViewModel, shortcutRoute: String? = null, shortcutShown: 
     Box(Modifier.fillMaxSize().background(Frost.Bg)) {
         CompositionLocalProvider(LocalNavSpace provides navSpace) {
         NavHost(nav, "dashboard", Modifier.fillMaxSize()) {
-            composable("dashboard") { DashboardScreen(vm, openKbRescue = { nav.navigate("kbrescue") }, openVoice = { nav.navigate("voice") }, openChat = { go("chat") }, openAi = { go("providers") }, openHistory = { go("devices") }, openSettings = { go("settings") }, openDevices = { go("devices") }) }
+            composable("dashboard") { DashboardScreen(vm, openKbRescue = { nav.navigate("kbrescue") }, openVoice = { nav.navigate("voice") }, openSerial = { nav.navigate("serial") }, openBoot = { go("boot") }, openChat = { go("chat") }, openAi = { go("providers") }, openSettings = { go("settings") }, openDevices = { go("devices") }) }
             composable("chat") { ChatScreen(vm, openKbRescue = { nav.navigate("kbrescue") }, openTerminal = { nav.navigate("terminal") }) }
             composable("terminal") { TerminalScreen(vm) }
             composable("boot") { BootScreen(vm) }
-            composable("usb") { UsbToolsScreen(vm, openKbRescue = { nav.navigate("kbrescue") }, openVoice = { nav.navigate("voice") }, openSerial = { nav.navigate("serial") }) }
             composable("serial") { SerialScreen(vm, back = { nav.popBackStack() }, openChat = { go("chat") }) }
             composable("voice") { VoiceTypeScreen(vm, back = { nav.popBackStack() }) }
             composable("kbrescue") { KeyboardRescueScreen(vm, back = { nav.popBackStack() }) }
             composable("providers") { ProvidersScreen(vm) }
             composable("devices") { DevicesScreen(vm, openChat = { go("chat") }, openKbRescue = { nav.navigate("kbrescue") }) }
-            composable("settings") { SettingsScreen(vm, back = { nav.popBackStack() }, openAi = { go("providers") }, openStorage = { nav.navigate("storage") }) }
+            composable("settings") { SettingsScreen(vm, back = { nav.popBackStack() }, openStorage = { nav.navigate("storage") }) }
             composable("storage") { StorageScreen(vm, back = { nav.popBackStack() }) }
         }
         }

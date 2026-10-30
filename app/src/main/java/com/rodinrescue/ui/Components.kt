@@ -170,23 +170,18 @@ fun FrostSwitch(checked: Boolean, onChange: (Boolean) -> Unit, label: String) =
     }
 
 // ── Status ──
-/** A 2×2 health-check tile. ok=null means "not checked yet". */
+/** Compact status pill: a check when ready, an amber dot when not, nothing while unknown. Tappable when [onClick] is set. */
 @Composable
-fun HealthTile(label: String, value: String, ok: Boolean?, modifier: Modifier = Modifier, dark: Boolean = false, onClick: (() -> Unit)? = null) {
-    val shape = RoundedCornerShape(20.dp)
-    var m = modifier.clip(shape)
-    m = if (dark) m.background(Frost.Ink) else m.background(Frost.Card).border(1.dp, Frost.Line, shape)
+fun StatusPill(text: String, ok: Boolean?, onClick: (() -> Unit)? = null) {
+    var m = Modifier.clip(Pill).background(Frost.Card).border(1.dp, if (ok == false) Frost.Warn else Frost.Line, Pill)
     if (onClick != null) m = m.clickable(role = Role.Button, onClick = onClick)
-    Column(m.padding(14.dp).heightIn(min = 52.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, fontSize = 12.sp, color = if (dark) Frost.OnInkMuted else Frost.Slate, fontFamily = Geist)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(value, Modifier.weight(1f, fill = false), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (dark) Color.White else Frost.Ink, fontFamily = Geist, maxLines = 1)
-            when (ok) {
-                true -> Icon(Icons.Filled.Check, "ready", Modifier.size(16.dp), tint = if (dark) Color.White else Frost.Good)
-                false -> Box(Modifier.size(8.dp).clip(CircleShape).background(Frost.Warn))
-                null -> {}
-            }
+    Row(m.padding(horizontal = 9.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        when (ok) {
+            true -> Icon(Icons.Filled.Check, "ready", Modifier.size(14.dp), tint = Frost.Good)
+            false -> Box(Modifier.size(7.dp).clip(CircleShape).background(Frost.Warn))
+            null -> {}
         }
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Frost.Ink, fontFamily = Geist, maxLines = 1)
     }
 }
 
@@ -227,19 +222,6 @@ fun SegmentProgress(total: Int, done: Int, modifier: Modifier = Modifier) =
 @Composable
 fun TerminalBlock(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) =
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Frost.Ink).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp), content = content)
-
-/** Selectable tile for the AI picker. */
-@Composable
-fun ChoiceTile(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, badge: (@Composable () -> Unit)? = null) {
-    val shape = RoundedCornerShape(20.dp)
-    val m = if (selected) modifier.shadow(12.dp, shape, ambientColor = Frost.Ink, spotColor = Frost.Ink).clip(shape).background(Frost.Ink)
-            else modifier.clip(shape).background(Frost.Field).border(1.dp, Frost.Line, shape)
-    Column(m.clickable(role = Role.RadioButton, onClick = onClick).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, fontFamily = Geist, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = if (selected) Color.White else Frost.Ink)
-        Text(subtitle, fontFamily = Geist, fontSize = 12.sp, color = if (selected) Frost.OnInkMuted else Frost.Slate)
-        badge?.let { Spacer(Modifier.height(4.dp)); it() }
-    }
-}
 
 /** Liquid-metal hero card with a dark scrim at the bottom so white text stays readable. */
 @Composable
