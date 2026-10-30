@@ -27,7 +27,7 @@ object CommandPolicy {
         "systemctl", "journalctl", "dmesg", "ip", "find", "dpkg", "rpm", "pacman", "apt", "apt-cache",
         "dnf", "yum", "zypper", "snap", "flatpak", "mount", "sysctl", "smartctl", "fsck-ro", "lsattr",
         "getfacl", "env-ro", "ldd", "modinfo", "dkms", "ufw", "iptables", "nft", "docker-ro", "command", "type", "systemd-analyze",
-        "pwd", "cd", "groups", "tty", "arch", "lsb_release", "users", "logname", "getconf"
+        "pwd", "groups", "tty", "arch", "lsb_release", "users", "logname", "getconf"
     )
 
     private val sensitivePath = Regex(
