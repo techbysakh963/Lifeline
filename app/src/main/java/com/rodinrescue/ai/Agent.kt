@@ -33,7 +33,8 @@ sealed class AgentEvent {
     class ScreenSeen(val jpeg: ByteArray) : AgentEvent()
     /** Keyboard mode: keys sent to the PC ([error] null = delivered). */
     data class KeysSent(val label: String, val error: String?) : AgentEvent()
-    data class Error(val message: String) : AgentEvent()
+    /** [fix]: the button shown under the error. The raw technical message is in the audit log. */
+    data class Error(val message: String, val fix: Fix? = null) : AgentEvent()
     /** A message from the app itself (not the AI), e.g. "type your password on the PC now". */
     data class Notice(val message: String) : AgentEvent()
     data class Finished(val reason: String) : AgentEvent()
@@ -61,15 +62,22 @@ class DiagnosticAgent(
     private fun log(kind: String, summary: String, detail: String = "", exit: Int? = null, risk: String? = null) =
         audit.append(AuditEntry(System.currentTimeMillis(), kind, Redactor.redact(summary, secrets()), Redactor.redact(detail, secrets()).take(20_000), exit, risk))
 
-    /** Runs the agent loop until the model stops calling tools, a guard trips, or the coroutine is cancelled (STOP). */
-    suspend fun run(history: MutableList<Msg>, userText: String) {
-        history.add(Msg.User(userText)); log("user", userText)
+    /**
+     * Runs the agent loop until the model stops calling tools, a guard trips, or the coroutine is cancelled (STOP).
+     * [userText] null = Try again: continue the history as it is (after an error), without a new message.
+     */
+    suspend fun run(history: MutableList<Msg>, userText: String?) {
+        if (userText != null) { history.add(Msg.User(userText)); log("user", userText) } else log("retry", "Try again")
         try {
             for (step in 1..maxSteps) {
                 currentCoroutineContext().ensureActive()
                 val turn = try {
                     provider.complete(systemPrompt, history, Tools.defs) { onEvent(AgentEvent.AssistantText(it, streaming = true)) }
-                } catch (e: ProviderException) { log("error", "provider: ${e.message}"); onEvent(AgentEvent.Error(e.message ?: "provider error")); onEvent(AgentEvent.Finished("provider error")); return }
+                } catch (e: ProviderException) {
+                    log("error", "provider ${provider.id}: ${e.message}", "http=${e.httpCode}")
+                    val f = Errors.provider(e, provider.displayName)
+                    onEvent(AgentEvent.Error(f.text, f.fix)); onEvent(AgentEvent.Finished("provider error")); return
+                }
                 turn.usage?.let { usage += it; onEvent(AgentEvent.Usage(usage)); log("usage", "tokens in=${it.promptTokens} out=${it.completionTokens}") }
                 history.add(Msg.Assistant(turn.text, turn.toolCalls, turn.reasoning, turn.raw))
                 if (turn.text.isNotBlank()) { onEvent(AgentEvent.AssistantText(turn.text)); log("assistant", turn.text) }
@@ -83,7 +91,7 @@ class DiagnosticAgent(
                     if (n >= 4) { onEvent(AgentEvent.Error("Loop guard: identical tool call repeated $n times. Stopped.")); log("error", "loop guard tripped", key); onEvent(AgentEvent.Finished("loop guard")); return }
                 }
             }
-            onEvent(AgentEvent.Error("Step limit ($maxSteps) reached. Stopped to avoid runaway loops."))
+            onEvent(AgentEvent.Error("Stopped after $maxSteps steps so it can't run on forever. Tap Try again to let it continue.", Fix.RETRY))
             log("error", "step limit reached")
             onEvent(AgentEvent.Finished("step limit"))
         } catch (e: CancellationException) {

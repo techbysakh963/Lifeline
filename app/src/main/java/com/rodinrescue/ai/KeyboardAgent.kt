@@ -140,9 +140,12 @@ class KeyboardAgent(
     private fun log(kind: String, summary: String, detail: String = "", risk: String? = null) =
         audit.append(AuditEntry(System.currentTimeMillis(), kind, Redactor.redact(summary, emptyList()), Redactor.redact(detail, emptyList()).take(20_000), null, risk))
 
-    /** [photo]: a picture of the screen the user attached to this message (📷), if any. */
-    suspend fun run(history: MutableList<Msg>, userText: String, photo: ByteArray? = null) {
-        history.add(Msg.User(userText, photo)); log("user", userText + if (photo != null) " [+photo]" else "")
+    /**
+     * [photo]: a picture of the screen the user attached to this message (📷), if any.
+     * [userText] null = Try again: continue the history as it is (after an error), without a new message.
+     */
+    suspend fun run(history: MutableList<Msg>, userText: String?, photo: ByteArray? = null) {
+        if (userText != null) { history.add(Msg.User(userText, photo)); log("user", userText + if (photo != null) " [+photo]" else "") } else log("retry", "Try again")
         justLooked = false
         if (photo != null) looked = true
         try {
@@ -156,10 +159,9 @@ class KeyboardAgent(
                     provider.complete(systemPrompt + modeLine() + shellLine() + textLine(), forAi, if (text != null) TOOLS + TEXT_TOOLS.map { it.def } else TOOLS) { onEvent(AgentEvent.AssistantText(it, streaming = true)) }
                 } catch (e: ProviderException) {
                     // Keyboard rescue sees only through photos: a brain that rejects images can't do it.
-                    val msg = if (e.httpCode in setOf(400, 415, 422) && history.any { it.photo != null })
-                        "This AI brain rejected the screen photo (${e.message?.take(120)}). Keyboard rescue needs a brain that can see images — pick another in AI brain."
-                    else e.message ?: "provider error"
-                    log("error", "provider: ${e.message}"); onEvent(AgentEvent.Error(msg)); onEvent(AgentEvent.Finished("provider error")); return
+                    log("error", "provider ${provider.id}: ${e.message}", "http=${e.httpCode}")
+                    val f = Errors.provider(e, provider.displayName, hadPhoto = history.any { it.photo != null })
+                    onEvent(AgentEvent.Error(f.text, f.fix)); onEvent(AgentEvent.Finished("provider error")); return
                 }
                 turn.usage?.let { usage += it; onEvent(AgentEvent.Usage(usage)) }
                 history.add(Msg.Assistant(turn.text, turn.toolCalls, turn.reasoning, turn.raw))
@@ -182,7 +184,7 @@ class KeyboardAgent(
                     }
                 }
             }
-            onEvent(AgentEvent.Error("Step limit ($maxSteps) reached. Stopped.")); onEvent(AgentEvent.Finished("step limit"))
+            onEvent(AgentEvent.Error("Stopped after $maxSteps steps so it can't run on forever. Tap Try again to let it continue.", Fix.RETRY)); onEvent(AgentEvent.Finished("step limit"))
         } catch (e: CancellationException) { log("stop", "User pressed STOP"); onEvent(AgentEvent.Finished("stopped by user")); throw e }
     }
 

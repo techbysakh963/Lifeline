@@ -27,6 +27,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,7 +60,7 @@ import com.rodinrescue.vision.CameraEyes
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun KeyboardRescueScreen(vm: RodinViewModel, back: () -> Unit) {
+fun KeyboardRescueScreen(vm: RodinViewModel, back: () -> Unit, onFix: (com.rodinrescue.ai.Fix) -> Unit = {}, openLog: () -> Unit = {}) {
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     var granted by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
@@ -141,7 +142,8 @@ fun KeyboardRescueScreen(vm: RodinViewModel, back: () -> Unit) {
                 if (vm.kbMessage.isNotBlank()) Muted(vm.kbMessage, color = if (vm.kbState == HidController.State.ERROR) Frost.Bad else Frost.Muted)
             }
         }
-        items(vm.chat) { ChatRow(it, vm::photoFile) }
+        itemsIndexed(vm.chat) { i, it -> val newest = i == vm.chat.lastIndex && !vm.running
+            ChatRow(it, vm::photoFile, onFix.takeIf { newest }, openLog.takeIf { newest }) }
         if (vm.streaming.isNotEmpty()) item { AssistantCard(vm.streaming, thinking = true) }
         if (vm.running && vm.streaming.isEmpty() && req == null) item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { MetalOrb(22.dp); Muted("Working…") } }
     }

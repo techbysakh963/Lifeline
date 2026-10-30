@@ -88,6 +88,12 @@ fun RodinRoot(vm: RodinViewModel, shortcutRoute: String? = null, shortcutShown: 
     )
     val entry by nav.currentBackStackEntryAsState()
     val go: (String) -> Unit = { r -> nav.navigate(r) { launchSingleTop = true; popUpTo("dashboard") } }
+    // The button under an error in the chat.
+    val fix: (com.rodinrescue.ai.Fix) -> Unit = { f -> when (f) {
+        com.rodinrescue.ai.Fix.RETRY -> vm.retry()
+        com.rodinrescue.ai.Fix.AI_BRAIN -> nav.navigate("providers") { launchSingleTop = true }
+        com.rodinrescue.ai.Fix.HOME -> go("dashboard")
+    } }
     // Content runs edge to edge behind the floating pill; screens pad their own bottom by LocalNavSpace
     // so nothing is cut off and the area around the pill stays fully transparent.
     val navSpace = NavBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -95,15 +101,16 @@ fun RodinRoot(vm: RodinViewModel, shortcutRoute: String? = null, shortcutShown: 
         CompositionLocalProvider(LocalNavSpace provides navSpace) {
         NavHost(nav, "dashboard", Modifier.fillMaxSize()) {
             composable("dashboard") { DashboardScreen(vm, openKbRescue = { nav.navigate("kbrescue") }, openVoice = { nav.navigate("voice") }, openSerial = { nav.navigate("serial") }, openBoot = { go("boot") }, openChat = { go("chat") }, openAi = { go("providers") }, openSettings = { go("settings") }, openDevices = { go("devices") }) }
-            composable("chat") { ChatScreen(vm, openKbRescue = { nav.navigate("kbrescue") }, openTerminal = { nav.navigate("terminal") }) }
+            composable("chat") { ChatScreen(vm, openKbRescue = { nav.navigate("kbrescue") }, openTerminal = { nav.navigate("terminal") }, onFix = fix, openLog = { nav.navigate("log") }) }
             composable("terminal") { TerminalScreen(vm) }
             composable("boot") { BootScreen(vm) }
             composable("serial") { SerialScreen(vm, back = { nav.popBackStack() }, openChat = { go("chat") }) }
             composable("voice") { VoiceTypeScreen(vm, back = { nav.popBackStack() }) }
-            composable("kbrescue") { KeyboardRescueScreen(vm, back = { nav.popBackStack() }) }
+            composable("kbrescue") { KeyboardRescueScreen(vm, back = { nav.popBackStack() }, onFix = fix, openLog = { nav.navigate("log") }) }
             composable("providers") { ProvidersScreen(vm) }
             composable("devices") { DevicesScreen(vm, openChat = { go("chat") }, openKbRescue = { nav.navigate("kbrescue") }) }
-            composable("settings") { SettingsScreen(vm, back = { nav.popBackStack() }, openStorage = { nav.navigate("storage") }) }
+            composable("settings") { SettingsScreen(vm, back = { nav.popBackStack() }, openStorage = { nav.navigate("storage") }, openLog = { nav.navigate("log") }) }
+            composable("log") { LogScreen(vm, back = { nav.popBackStack() }) }
             composable("storage") { StorageScreen(vm, back = { nav.popBackStack() }) }
         }
         }

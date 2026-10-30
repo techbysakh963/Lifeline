@@ -35,7 +35,7 @@ import kotlin.math.roundToInt
 private const val REPO_URL = "https://github.com/techbysakh963/Lifeline"
 
 @Composable
-fun SettingsScreen(vm: RodinViewModel, back: () -> Unit, openStorage: () -> Unit) {
+fun SettingsScreen(vm: RodinViewModel, back: () -> Unit, openStorage: () -> Unit, openLog: () -> Unit = {}) {
     val ctx = LocalContext.current
     var support by remember { mutableStateOf(false) }
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -144,6 +144,7 @@ fun SettingsScreen(vm: RodinViewModel, back: () -> Unit, openStorage: () -> Unit
                     Muted("Version ${appVersion(ctx)} · open source")
                 }
             }
+            LinkRow("Log", "Technical details of the open conversation: errors, commands, times", openLog)
             LinkRow("Report a bug", "Opens a form on GitHub with a short diagnostic report") { report = vm.bugReport() }
             LinkRow("Source code", REPO_URL.removePrefix("https://")) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(REPO_URL))) }
             Muted("© 2026 techbysakh963 · Apache License 2.0. Copies and derived works must keep this credit and the NOTICE file.")

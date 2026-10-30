@@ -112,7 +112,7 @@ class AgentTest {
         }
         val ev = mutableListOf<AgentEvent>()
         agent(p, FakeTransport(), { true }, ev, max = 3).run(mutableListOf(), "x")
-        assertTrue(ev.any { it is AgentEvent.Error && it.message.contains("Step limit") })
+        assertTrue(ev.any { it is AgentEvent.Error && it.message.contains("Stopped after 3 steps") && it.fix == com.rodinrescue.ai.Fix.RETRY })
     }
 
     @Test fun stopCancelsAndAudits() = runBlocking {
@@ -131,5 +131,22 @@ class AgentTest {
         val hist = mutableListOf<Msg>()
         agent(ScriptedProvider(listOf(turn("", tc("1", "read_system_logs", """{"lines": 99999}""")), turn("ok"))), FakeTransport(), { true }).run(hist, "x")
         assertTrue(hist.filterIsInstance<Msg.Tool>().single().content.contains("Invalid arguments"))
+    }
+
+    @Test fun tryAgainContinuesWithoutRepeatingTheMessage() = runBlocking {
+        var calls = 0
+        val p = object : AiProvider {
+            override val id = "flaky"; override val displayName = "Claude — API key (Anthropic Console)"
+            override suspend fun complete(system: String, messages: List<Msg>, tools: List<ToolDef>, onTextDelta: (String) -> Unit) =
+                if (calls++ == 0) throw ProviderException("Claude is overloaded, try again shortly: 529", 529, retryable = true) else turn("Back.")
+            override suspend fun testConnection() = ""
+        }
+        val hist = mutableListOf<Msg>(); val ev = mutableListOf<AgentEvent>()
+        agent(p, FakeTransport(), { true }, ev).run(hist, "black screen")
+        val err = ev.filterIsInstance<AgentEvent.Error>().single()
+        assertEquals(com.rodinrescue.ai.Fix.RETRY, err.fix); assertFalse(err.message.contains("529"))
+        agent(p, FakeTransport(), { true }, ev).run(hist, null)
+        assertEquals(1, hist.count { it is Msg.User })
+        assertTrue(hist.last() is Msg.Assistant)
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.rodinrescue.ChatItem
+import com.rodinrescue.ai.Fix
 import com.rodinrescue.RodinViewModel
 import com.rodinrescue.security.Risk
 
@@ -215,7 +217,7 @@ private fun WayTile(icon: androidx.compose.ui.graphics.vector.ImageVector, title
 
 // ───────────────────────────── Rescue chat ─────────────────────────────
 @Composable
-fun ChatScreen(vm: RodinViewModel, openKbRescue: () -> Unit = {}, openTerminal: () -> Unit = {}) {
+fun ChatScreen(vm: RodinViewModel, openKbRescue: () -> Unit = {}, openTerminal: () -> Unit = {}, onFix: (Fix) -> Unit = {}, openLog: () -> Unit = {}) {
     var input by remember { mutableStateOf("") }
     val state = rememberLazyListState()
     LaunchedEffect(vm.chat.size, vm.streaming) { if (vm.chat.isNotEmpty()) state.animateScrollToItem(vm.chat.size) }
@@ -241,7 +243,8 @@ fun ChatScreen(vm: RodinViewModel, openKbRescue: () -> Unit = {}, openTerminal: 
                     Muted("e.g. “Black screen after the update, only the cursor shows.” It investigates read-only first and asks before it changes anything.")
                 }
             }
-            items(vm.chat) { ChatRow(it, vm::photoFile) }
+            itemsIndexed(vm.chat) { i, it -> val newest = i == vm.chat.lastIndex && !vm.running
+                ChatRow(it, vm::photoFile, onFix.takeIf { newest }, openLog.takeIf { newest }) }
             if (vm.streaming.isNotEmpty()) item { AssistantCard(vm.streaming, thinking = true) }
             if (vm.running && vm.streaming.isEmpty()) item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { MetalOrb(22.dp); Muted("Working…") } }
         }
@@ -278,7 +281,7 @@ internal fun AssistantCard(text: String, thinking: Boolean = false) = FrostCard(
 }
 
 @Composable
-internal fun ChatRow(item: ChatItem, photo: (String) -> java.io.File = { java.io.File(it) }) {
+internal fun ChatRow(item: ChatItem, photo: (String) -> java.io.File = { java.io.File(it) }, onFix: ((Fix) -> Unit)? = null, openLog: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     when (item) {
         is ChatItem.UserMsg -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -298,7 +301,14 @@ internal fun ChatRow(item: ChatItem, photo: (String) -> java.io.File = { java.io
                 if (open) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Tag(item.name); if (item.args.isNotBlank() && item.args != "{}") Muted(item.args, Modifier.weight(1f), color = Frost.Muted) }
             }
         }
-        is ChatItem.Notice -> Muted(item.text, color = if (item.error) Frost.Bad else Frost.Slate)
+        // An error says what to do; the newest one also gets its button and a way to the technical details.
+        is ChatItem.Notice -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Muted(item.text, color = if (item.error) Frost.Bad else Frost.Slate)
+            if (item.error && (onFix != null || openLog != null)) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (item.fix != null && onFix != null) FrostOutlineButton(item.fix.label, { onFix(item.fix) })
+                if (openLog != null) GhostButton("Details", openLog)
+            }
+        }
         is ChatItem.KeysItem -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Badge("⌨", if (item.error == null) Tone.Ink else Tone.Bad)
             Mono(item.label + (item.error?.let { " — $it" } ?: ""), Modifier.weight(1f), color = if (item.error == null) Frost.Ink else Frost.Bad, size = 12)

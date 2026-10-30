@@ -35,7 +35,8 @@ sealed class ChatItem {
     @kotlinx.serialization.Serializable data class ToolCallItem(val name: String, val args: String) : ChatItem()
     @kotlinx.serialization.Serializable data class Cmd(val command: String, val privileged: Boolean, val result: ExecResult) : ChatItem()
     @kotlinx.serialization.Serializable data class ApprovalItem(val req: ApprovalRequest, val approved: Boolean, val auto: Boolean = false) : ChatItem()
-    @kotlinx.serialization.Serializable data class Notice(val text: String, val error: Boolean = false) : ChatItem()
+    /** [fix]: the button under an error (the newest one only). */
+    @kotlinx.serialization.Serializable data class Notice(val text: String, val error: Boolean = false, val fix: com.rodinrescue.ai.Fix? = null) : ChatItem()
     /** What the AI saw: [photo] = file name in the conversation's folder ([text]: OCR from older builds). */
     @kotlinx.serialization.Serializable data class ScreenItem(val text: String = "", val photo: String? = null) : ChatItem()
     @kotlinx.serialization.Serializable data class KeysItem(val label: String, val error: String? = null) : ChatItem()
@@ -434,18 +435,28 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- chat / agent ----------
     fun newDiagnosis() { kbTextOffered = false; screenArea = null; giveControlBack(); controlNote = null; stopAll(); cliSessions.values.forEach { it.close() }; chat.clear(); history.clear(); usage = TokenUsage(); audit.newSession(); conversationDevice = activeDeviceId; diagnosticStatus = "Idle"; kbMode = false; attachedPhoto = null }
 
-    fun send(text: String) {
-        if (text.isBlank() || running) return
+    /** An app-side error: plain words (and a button) in the chat, the raw [detail] in the log. */
+    private fun problem(text: String, fix: com.rodinrescue.ai.Fix? = null, detail: String = "") {
+        chat.add(ChatItem.Notice(text, true, fix))
+        audit.append(AuditEntry(System.currentTimeMillis(), "error", text, detail))
+    }
+
+    /** Try again after an error: the same conversation continues, with no new message. */
+    fun retry() { if (kbMode) sendKeyboard(null) else send(null) }
+
+    /** [text] null = Try again (see [retry]). */
+    fun send(text: String?) {
+        if (text?.isBlank() == true || running) return
         // A keyboard-rescue conversation must continue there: the SSH agent has other tools and can't see the screen.
-        if (kbMode) { chat.add(ChatItem.Notice("This is a keyboard rescue conversation. Continue it in Keyboard rescue (it needs the camera), or start a new rescue here.", true)); return }
+        if (kbMode) { problem("This is a keyboard rescue conversation. Continue it in Keyboard rescue (it needs the camera), or start a new rescue here."); return }
         val ssh = transport?.takeIf { connected }
         val serial = serialAi?.takeIf { it.isConnected }
         val t: CommandTransport = ssh ?: serial ?: run {
-            chat.add(ChatItem.Notice("Not connected to a target computer. Open Home and connect over SSH first, or log in over USB tools › USB serial.", true)); return
+            problem("Not connected to a PC. Connect over SSH on Home, or log in over USB serial.", com.rodinrescue.ai.Fix.HOME); return
         }
         saveProviderSettings()
         if (chat.isEmpty()) conversationDevice = activeDeviceId
-        chat.add(ChatItem.UserMsg(text)); running = true; diagnosticStatus = "Diagnosing…"; streaming = ""
+        if (text != null) chat.add(ChatItem.UserMsg(text)); running = true; diagnosticStatus = "Diagnosing…"; streaming = ""
         persistConversation()
         val agent = DiagnosticAgent(
             provider = activeProvider(), transport = t, audit = audit,
@@ -517,7 +528,7 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
     fun cardTake() = viewModelScope.launch {
         val cam = camera ?: return@launch
         cardBusy = true
-        try { cardPhoto = cam.capture() } catch (e: Exception) { chat.add(ChatItem.Notice("Camera error: ${e.message}", true)) } finally { cardBusy = false }
+        try { cardPhoto = cam.capture() } catch (e: Exception) { problem("The camera couldn't take the photo. Take it again; if it keeps failing, close other camera apps.", detail = "camera: ${e.message}") } finally { cardBusy = false }
     }
     fun cardRetake() { cardPhoto = null }
     /** Sends the card's photo cut to [area] (null = the whole photo) and keeps the area for the next photos. */
@@ -525,7 +536,7 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
         val cam = camera ?: return@launch; val photo = cardPhoto ?: return@launch; val req = photoRequest ?: return@launch
         cardBusy = true
         try { screenArea = area?.takeIf { it.valid() }; req.reply.complete(cam.screen(photo, screenArea)) }
-        catch (e: Exception) { chat.add(ChatItem.Notice("Couldn't prepare the photo: ${e.message}", true)) } finally { cardBusy = false }
+        catch (e: Exception) { problem("Couldn't prepare the photo. Take it again.", detail = "photo: ${e.message}") } finally { cardBusy = false }
     }
     fun cardSkip() { photoRequest?.reply?.complete(null) }
     /** From the camera panel: take a photo and fit the frame to the PC's screen, for the photos that follow. */
@@ -595,19 +606,20 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val s = if (kbHandheld) askPhoto("Take the photo to attach to your message.", forAi = false) else cam.screen(cam.capture(), screenArea)
             s?.let { attachedPhoto = it.jpeg }
-        } catch (ex: Exception) { chat.add(ChatItem.Notice("Camera error: ${ex.message}", true)) } finally { attaching = false }
+        } catch (ex: Exception) { problem("The camera couldn't take the photo. Take it again; if it keeps failing, close other camera apps.", detail = "camera: ${ex.message}") } finally { attaching = false }
     }
     fun clearAttachment() { attachedPhoto = null }
 
     fun photoFile(name: String) = convStore.photoFile(audit.sessionId, name)
 
-    fun sendKeyboard(text: String) {
-        if (text.isBlank() || running) return
-        val e = eyes ?: run { chat.add(ChatItem.Notice("The camera isn't ready. Allow camera access and aim the phone at the PC's screen.", true)); return }
-        if (kbState != HidController.State.ON) { chat.add(ChatItem.Notice("The USB keyboard is off. Turn it on (the PC must be plugged in).", true)); return }
+    /** [text] null = Try again (see [retry]). */
+    fun sendKeyboard(text: String?) {
+        if (text?.isBlank() == true || running) return
+        val e = eyes ?: run { problem("The camera isn't ready. Allow camera access and aim the phone at the PC's screen."); return }
+        if (kbState != HidController.State.ON) { problem("The USB keyboard is off. Turn it on (the PC must be plugged in)."); return }
         saveProviderSettings()
-        val photo = attachedPhoto; attachedPhoto = null
-        chat.add(ChatItem.UserMsg(text, photo?.let { convStore.savePhoto(audit.sessionId, it) })); running = true; diagnosticStatus = "Looking…"; streaming = ""
+        val photo = if (text != null) attachedPhoto.also { attachedPhoto = null } else null
+        if (text != null) chat.add(ChatItem.UserMsg(text, photo?.let { convStore.savePhoto(audit.sessionId, it) })); running = true; diagnosticStatus = "Looking…"; streaming = ""
         persistConversation()
         val agent = com.rodinrescue.ai.KeyboardAgent(
             provider = activeProvider(), eyes = e, hands = hands, audit = audit,
@@ -652,7 +664,7 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
             is AgentEvent.Usage -> { usage = ev.total; cliUsedRev++ }
             is AgentEvent.ScreenSeen -> { lastSeenPhoto = ev.jpeg; chat.add(ChatItem.ScreenItem(photo = convStore.savePhoto(audit.sessionId, ev.jpeg))) }
             is AgentEvent.KeysSent -> chat.add(ChatItem.KeysItem(ev.label, ev.error))
-            is AgentEvent.Error -> chat.add(ChatItem.Notice(ev.message, true))
+            is AgentEvent.Error -> chat.add(ChatItem.Notice(ev.message, true, ev.fix))
             is AgentEvent.Notice -> chat.add(ChatItem.Notice(ev.message))
             is AgentEvent.Finished -> { diagnosticStatus = "Finished (${ev.reason})"; streaming = ""; cliUsedRev++ }
         }
