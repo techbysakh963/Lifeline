@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/techbysakh963/Lifeline/releases"><img alt="Download" src="https://img.shields.io/badge/Download-APK-35E3A1?style=for-the-badge&logo=android&logoColor=0B0D10&labelColor=35E3A1"></a>
-  <img alt="Version 0.6.0 beta" src="https://img.shields.io/badge/v0.6.0-beta-E9EDF1?style=for-the-badge&labelColor=0B0D10">
+  <img alt="Version 0.6.1 beta" src="https://img.shields.io/badge/v0.6.1-beta-E9EDF1?style=for-the-badge&labelColor=0B0D10">
   <img alt="Android 10+" src="https://img.shields.io/badge/Android-10%2B-E9EDF1?style=for-the-badge&labelColor=0B0D10">
   <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-E9EDF1?style=for-the-badge&labelColor=0B0D10">
 </p>

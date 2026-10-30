@@ -15,7 +15,8 @@ import javax.net.SocketFactory
  * non-bypassable VPN only receive through the VPN), so the routing rule ([com.rodinrescue.setup.NetFix]) wasn't enough.
  * Root and shell aren't filtered. So, only while a VPN is on: the scan runs as root, and SSH talks through a root
  * `nc` over that process's own stdin/stdout ([PipeSocket]): a private pipe, no listener any other app could reach
- * (security review 2026-10-29; a first version used a one-shot loopback listener).
+ * (security review 2026-10-29; a first version used a one-shot loopback listener). The laptop setup server is reached
+ * the same way, through a root listener ([listenCommand]); found 2026-10-30 when the laptop's `curl` timed out.
  */
 object RootRelay {
     private val IPV4 = Regex("""^\d{1,3}(\.\d{1,3}){3}$""")
@@ -37,6 +38,42 @@ object RootRelay {
     internal fun pipeCommand(ip: String, port: Int): List<String> {
         require(IPV4.matches(ip) && port in 1..65535)
         return listOf("su", "-c", "exec toybox nc -w 10 $ip $port")
+    }
+
+    private val PRIVATE_PATH = Regex("""^/data/[A-Za-z0-9._/-]+$""")
+
+    /**
+     * The root listener for the laptop setup server ([com.rodinrescue.setup.SetupServer]): holds [ip]:[port] until it is
+     * killed and passes each connection to the app's private Unix socket [endpoint]. Holding the port the whole time
+     * means no other app can take it between connections. One left behind (the app died) ends after an hour, and until
+     * then only forwards to a socket nobody listens on.
+     */
+    fun listenCommand(ip: String, port: Int, endpoint: String): List<String> {
+        require(IPV4.matches(ip) && port in 1..65535 && PRIVATE_PATH.matches(endpoint) && ".." !in endpoint)
+        return listOf("su", "-c", "exec timeout 3600 toybox nc -L -s $ip -p $port toybox nc -U $endpoint")
+    }
+
+    /** Ends listeners from [listenCommand] on [ip]:[port]. The ^ keeps the shell running pkill from matching itself. */
+    fun killListenersCommand(ip: String, port: Int): List<String> {
+        require(IPV4.matches(ip) && port in 1..65535)
+        return listOf("su", "-c", "pkill -f '^toybox nc -L -s $ip -p $port '")
+    }
+
+    /** Whether a root-owned socket listens on [ip]:[port] (read from /proc/net/tcp as root). */
+    fun rootHolds(ip: String, port: Int): Boolean {
+        require(IPV4.matches(ip) && port in 1..65535)
+        val out = runCatching {
+            val p = ProcessBuilder("su", "-c", "cat /proc/net/tcp").redirectErrorStream(true).start()
+            p.inputStream.bufferedReader().readText().also { p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) }
+        }.getOrDefault("")
+        return rootListens(out, ip, port)
+    }
+
+    /** /proc/net/tcp parser: a LISTEN (0A) row for [ip]:[port] owned by uid 0. Addresses are little-endian hex. */
+    internal fun rootListens(procNetTcp: String, ip: String, port: Int): Boolean {
+        val addr = ip.split('.').reversed().joinToString("") { "%02X".format(it.toInt()) } + ":%04X".format(port)
+        return procNetTcp.lines().drop(1).map { it.trim().split(Regex("\\s+")) }
+            .any { f -> f.size > 7 && f[1].equals(addr, true) && f[3] == "0A" && f[7] == "0" }
     }
 
     /** Sockets that go through a root `nc` (for sshj's `socketFactory`). */

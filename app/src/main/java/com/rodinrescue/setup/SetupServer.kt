@@ -2,9 +2,14 @@ package com.rodinrescue.setup
 
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
+import java.io.Closeable
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
-import java.net.Socket
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** What the laptop script changed (null = unknown, e.g. a laptop set up by an older version). */
 data class LaptopChanges(val stateRecorded: Boolean, val installedSshd: Boolean?, val sshdWasEnabled: Boolean?, val sshdWasActive: Boolean?, val ufwIface: String?)
@@ -12,40 +17,117 @@ data class LaptopChanges(val stateRecorded: Boolean, val installedSshd: Boolean?
 data class Checkin(val user: String, val ip: String, val port: Int, val fingerprints: List<String>, val hostname: String,
                    val changes: LaptopChanges = LaptopChanges(false, null, null, null, null))
 
+/** One accepted connection's two streams. */
+class Conn(val input: InputStream, val output: OutputStream, private val onClose: () -> Unit) : Closeable {
+    override fun close() = onClose()
+}
+
+/** Where the server takes connections from. [close] must make a blocked [accept] throw. */
+interface Acceptor : Closeable { fun accept(): Conn }
+
 /**
- * Tiny HTTP server bound to the phone's USB-tether address ONLY. Serves the laptop script at /s/<token> and receives the
- * laptop's check-in at /r/<token>. The token is random per setup; the server is stopped after the check-in.
+ * Tiny HTTP server for the laptop setup. Serves the laptop script at /s/<token> and receives the laptop's check-in at
+ * /r/<token> (once: the token is spent by the first check-in). The token is random per setup; the server is stopped
+ * after the check-in.
+ *
+ * Normally it listens on the phone's USB-tether address only. Under a VPN that isn't bypassable, Android drops the USB
+ * link's packets to the app, so a [Relay] is used: a root listener holds the port for the whole setup and passes each
+ * connection to a Unix socket in the app's private folder, which only the app (and root) can open. The port is never
+ * released between connections, so no other app can take it and answer the laptop's `curl … | sudo sh`.
  */
 class SetupServer(private val scope: CoroutineScope, private val scriptProvider: () -> String, private val onCheckin: (Checkin) -> Unit) {
-    private var server: ServerSocket? = null
+    /**
+     * [openPrivate] opens the app's private endpoint and returns the address root connects to; [listen] is the root
+     * listener for ip:port that forwards to that address; [kill] ends such listeners; [rootHolds] reads whether root
+     * owns a listener on ip:port (checked before the laptop command is shown).
+     */
+    class Relay(
+        val openPrivate: () -> Pair<String, Acceptor>,
+        val listen: (ip: String, port: Int, endpoint: String) -> List<String>,
+        val kill: (ip: String, port: Int) -> List<String>,
+        val rootHolds: (ip: String, port: Int) -> Boolean,
+    )
+
+    private val lock = Any()
+    private var acceptor: Acceptor? = null
     private var job: Job? = null
+    private var stopped = true
+    private var relayProcess: Process? = null
+    private var relayKill: List<String>? = null
+    private val checkedIn = AtomicBoolean(false)
     var boundPort: Int = 0; private set
 
-    fun start(bindIp: String, token: String, port: Int = 8787): Int {
+    /** Blocking (it may run root commands): call it off the main thread. Throws when no port could be opened. */
+    fun start(bindIp: String, token: String, port: Int = 8787, relay: Relay? = null): Int {
         stop()
-        val ss = try { ServerSocket(port, 5, InetAddress.getByName(bindIp)) } catch (e: Exception) { ServerSocket(0, 5, InetAddress.getByName(bindIp)) }
-        server = ss; boundPort = ss.localPort
-        job = scope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val c = try { ss.accept() } catch (e: Exception) { break }
-                launch { runCatching { handle(c, token) }; runCatching { c.close() } }
+        // One setup server per app: a second screen once started its own and the first kept a root listener alive.
+        synchronized(SetupServer) { running?.takeIf { it !== this }?.stop(); running = this }
+        checkedIn.set(false)
+        val acc = if (relay != null) openRelayed(bindIp, port, relay) else {
+            val ss = try { ServerSocket(port, 5, InetAddress.getByName(bindIp)) } catch (e: Exception) { ServerSocket(0, 5, InetAddress.getByName(bindIp)) }
+            boundPort = ss.localPort
+            object : Acceptor {
+                override fun accept() = ss.accept().let { c -> c.soTimeout = 5000; Conn(c.getInputStream(), c.getOutputStream()) { c.close() } }
+                override fun close() = ss.close()
+            }
+        }
+        synchronized(lock) {
+            stopped = false; acceptor = acc
+            job = scope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    val c = try { acc.accept() } catch (e: Exception) { break }
+                    launch { c.use { runCatching { handle(it.input, it.output, token) } } }
+                }
             }
         }
         return boundPort
     }
 
-    fun stop() { runCatching { server?.close() }; job?.cancel(); server = null }
+    private fun openRelayed(bindIp: String, port: Int, relay: Relay): Acceptor {
+        runCatching { ProcessBuilder(relay.kill(bindIp, port)).start().waitFor(5, TimeUnit.SECONDS) }   // left from an earlier run
+        val (endpoint, acc) = relay.openPrivate()
+        for (p in port..port + 10) {
+            val proc = try { ProcessBuilder(relay.listen(bindIp, p, endpoint)).redirectErrorStream(true).start() } catch (e: Exception) { break }
+            // Up to 3 s for root to bind. A listener that exits lost the port (or root was refused): try the next one.
+            var holds = false
+            for (i in 1..15) { Thread.sleep(200); if (!proc.isAlive) break; if (relay.rootHolds(bindIp, p)) { holds = true; break } }
+            if (holds) {
+                synchronized(lock) { relayProcess = proc; relayKill = relay.kill(bindIp, p) }
+                boundPort = p
+                return acc
+            }
+            proc.destroy(); runCatching { ProcessBuilder(relay.kill(bindIp, p)).start().waitFor(5, TimeUnit.SECONDS) }
+        }
+        acc.close()
+        throw IOException("Couldn't open the setup port on $bindIp as root")
+    }
 
-    private fun handle(c: Socket, token: String) {
-        c.soTimeout = 5000
-        val ins = c.getInputStream().buffered()
+    fun stop() {
+        val kill: List<String>?
+        synchronized(lock) {
+            if (stopped) return
+            stopped = true
+            runCatching { acceptor?.close() }; acceptor = null
+            job?.cancel(); job = null
+            relayProcess?.destroy(); relayProcess = null
+            kill = relayKill; relayKill = null
+        }
+        // The root listener may not be our child (a root manager can start it for us): end it by its command line.
+        kill?.let { k -> Thread { runCatching { ProcessBuilder(k).start().waitFor(10, TimeUnit.SECONDS) } }.apply { isDaemon = true; start() } }
+        synchronized(SetupServer) { if (running === this) running = null }
+    }
+
+    private companion object { var running: SetupServer? = null }
+
+    /** One request on [input]/[output]. */
+    private fun handle(input: InputStream, out: OutputStream, token: String) {
+        val ins = input.buffered()
         fun line(): String? { val b = ByteArrayOutputStream(); while (true) { val x = ins.read(); if (x < 0) return if (b.size() == 0) null else b.toString(); if (x == '\n'.code) return b.toString().trimEnd('\r'); if (b.size() > 4096) return null; b.write(x) } }
         val req = line() ?: return
         var len = 0
         while (true) { val h = line() ?: break; if (h.isEmpty()) break; if (h.startsWith("Content-Length:", true)) len = h.substringAfter(':').trim().toIntOrNull() ?: 0 }
         val parts = req.split(" ")
         val method = parts.getOrNull(0); val path = parts.getOrNull(1) ?: ""
-        val out = c.getOutputStream()
         fun respond(code: Int, body: String, type: String = "text/plain") {
             val b = body.toByteArray()
             out.write("HTTP/1.1 $code X\r\nContent-Type: $type; charset=utf-8\r\nContent-Length: ${b.size}\r\nConnection: close\r\n\r\n".toByteArray()); out.write(b); out.flush()
@@ -57,6 +139,7 @@ class SetupServer(private val scope: CoroutineScope, private val scriptProvider:
                 val kv = String(body, 0, n).split("&").mapNotNull { it.split("=", limit = 2).takeIf { p -> p.size == 2 }?.let { p -> p[0] to p[1] } }.toMap()
                 val ip = kv["ip"].orEmpty()
                 if (!Regex("^\\d{1,3}(\\.\\d{1,3}){3}$").matches(ip) || !Regex("^[A-Za-z0-9._-]{1,64}$").matches(kv["user"].orEmpty())) { respond(400, "bad"); return }
+                if (!checkedIn.compareAndSet(false, true)) { respond(409, "already checked in"); return }
                 val fps = kv["fps"].orEmpty().split(",").filter { Regex("^SHA256:[A-Za-z0-9+/=]{20,60}$").matches(it) }
                 respond(200, "ok")
                 fun flag(k: String) = when (kv[k]) { "1" -> true; "0" -> false; else -> null }

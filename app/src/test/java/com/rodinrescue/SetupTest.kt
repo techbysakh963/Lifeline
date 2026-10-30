@@ -85,6 +85,96 @@ class SetupTest {
         } finally { srv.stop() }
     }
 
+    /**
+     * Under a VPN: a root listener holds the port and forwards each connection to the app's private endpoint. Here a
+     * plain loopback socket stands in for the Unix socket, and a small Python forwarder for root's `nc -L`.
+     */
+    @Test fun relayedServerTakesConnectionsFromThePrivateEndpoint() {
+        val q = LinkedBlockingQueue<Checkin>()
+        val priv = java.net.ServerSocket(0, 5, java.net.InetAddress.getByName("127.0.0.1"))
+        val acceptor = object : Acceptor {
+            override fun accept() = priv.accept().let { c -> Conn(c.getInputStream(), c.getOutputStream()) { c.close() } }
+            override fun close() = priv.close()
+        }
+        val fwd = File.createTempFile("fwd", ".py").apply { writeText("""
+import socket, sys, threading
+ls = socket.socket(); ls.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); ls.bind((sys.argv[1], int(sys.argv[2]))); ls.listen(5)
+def pipe(a, b):
+    while True:
+        d = a.recv(65536)
+        if not d: b.shutdown(socket.SHUT_WR); return
+        b.sendall(d)
+while True:
+    c, _ = ls.accept(); u = socket.create_connection(("127.0.0.1", int(sys.argv[3])))
+    threading.Thread(target=pipe, args=(c, u), daemon=True).start(); threading.Thread(target=pipe, args=(u, c), daemon=True).start()
+""".trimIndent()) }
+        val freePort = java.net.ServerSocket(0).use { it.localPort }
+        val relay = SetupServer.Relay(
+            openPrivate = { priv.localPort.toString() to acceptor },
+            listen = { ip, port, endpoint -> listOf("python3", "-I", fwd.path, ip, port.toString(), endpoint) },
+            kill = { _, _ -> listOf("true") },
+            rootHolds = { ip, port -> runCatching { java.net.Socket(ip, port).close() }.isSuccess })
+        val srv = SetupServer(CoroutineScope(Dispatchers.IO), { "#!/bin/sh\necho script" }) { q.put(it) }
+        val port = srv.start("127.0.0.1", "tok", freePort, relay)
+        try {
+            assertEquals(freePort, port)
+            assertEquals("#!/bin/sh\necho script", URL("http://127.0.0.1:$port/s/tok").readText())
+            fun post(): Int = (URL("http://127.0.0.1:$port/r/tok").openConnection() as HttpURLConnection).run {
+                requestMethod = "POST"; doOutput = true
+                outputStream.write("user=alice&ip=10.32.213.37&port=22&fps=SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&host=lap".toByteArray())
+                responseCode
+            }
+            assertEquals(200, post())
+            assertEquals("alice", q.poll(5, TimeUnit.SECONDS)!!.user)
+            assertEquals("the token is spent by the first check-in", 409, post())
+        } finally { srv.stop(); ProcessBuilder("pkill", "-f", "^python3 -I ${fwd.path}").start().waitFor() }
+    }
+
+    /** A listener that exits (port taken, root refused) is never shown as ready: the next port is tried, then an error. */
+    @Test fun relayFailsClosedWhenRootCantHoldThePort() {
+        var opened = 0; var closed = 0
+        val acceptor = object : Acceptor { override fun accept(): Conn { Thread.sleep(60_000); error("unreachable") }; override fun close() { closed++ } }
+        val relay = SetupServer.Relay({ opened++; "x" to acceptor }, { _, _, _ -> listOf("false") }, { _, _ -> listOf("true") }, { _, _ -> false })
+        val srv = SetupServer(CoroutineScope(Dispatchers.IO), { "s" }) {}
+        assertThrows(java.io.IOException::class.java) { srv.start("127.0.0.1", "t", 40000, relay) }
+        assertEquals(1, opened); assertEquals(1, closed)
+    }
+
+    @Test fun rootListenerCommandsAreCheckedAndBounded() {
+        assertEquals(listOf("su", "-c", "exec timeout 3600 toybox nc -L -s 10.32.213.199 -p 8787 toybox nc -U /data/user/0/com.rodinrescue/files/setup.sock"),
+            RootRelay.listenCommand("10.32.213.199", 8787, "/data/user/0/com.rodinrescue/files/setup.sock"))
+        assertThrows(IllegalArgumentException::class.java) { RootRelay.listenCommand("10.0.0.1;reboot", 8787, "/data/x/s.sock") }
+        assertThrows(IllegalArgumentException::class.java) { RootRelay.listenCommand("10.0.0.1", 70000, "/data/x/s.sock") }
+        assertThrows(IllegalArgumentException::class.java) { RootRelay.listenCommand("10.0.0.1", 8787, "/data/x/s.sock; reboot") }
+        assertThrows(IllegalArgumentException::class.java) { RootRelay.listenCommand("10.0.0.1", 8787, "/data/../tmp/s.sock") }
+        assertEquals(listOf("su", "-c", "pkill -f '^toybox nc -L -s 10.32.213.199 -p 8787 '"), RootRelay.killListenersCommand("10.32.213.199", 8787))
+        assertThrows(IllegalArgumentException::class.java) { RootRelay.killListenersCommand("10.0.0.1'; reboot; '", 8787) }
+    }
+
+    /** Real rows from the phone: root's toybox on 10.32.213.199:8787, and an app (uid 10312) on another port. */
+    @Test fun readsWhoListensFromProcNetTcp() {
+        val rows = """  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: C7D5200A:2253 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 4711 1 0000000000000000 100 0 0 10 0
+   1: C7D5200A:2254 00000000:0000 0A 00000000:00000000 00:00000000 00000000 10312        0 4712 1 0000000000000000 100 0 0 10 0
+   2: C7D5200A:2255 0D20D50A:B1A0 01 00000000:00000000 00:00000000 00000000     0        0 4713 1 0000000000000000 100 0 0 10 0"""
+        assertTrue(RootRelay.rootListens(rows, "10.32.213.199", 8787))
+        assertFalse("an app's listener isn't root's", RootRelay.rootListens(rows, "10.32.213.199", 8788))
+        assertFalse("not listening", RootRelay.rootListens(rows, "10.32.213.199", 8789))
+        assertFalse(RootRelay.rootListens(rows, "10.32.213.198", 8787))
+    }
+
+    /** Starting a second setup server ends the first: a stray one kept a root listener on the USB link. */
+    @Test fun aNewSetupServerStopsTheOldOne() {
+        val a = SetupServer(CoroutineScope(Dispatchers.IO), { "a" }) {}
+        val b = SetupServer(CoroutineScope(Dispatchers.IO), { "b" }) {}
+        val pa = a.start("127.0.0.1", "t", 0)
+        b.start("127.0.0.1", "t", 0)
+        try {
+            Thread.sleep(200)
+            assertThrows(java.io.IOException::class.java) { (URL("http://127.0.0.1:$pa/s/t").openConnection() as HttpURLConnection).apply { connectTimeout = 1000 }.responseCode }
+        } finally { b.stop() }
+    }
+
     @Test fun scriptHasValidShellSyntax() {
         val f = File.createTempFile("rodin", ".sh"); f.writeText(LaptopScript.build("10.1.2.3", 8787, "tok", "ssh-rsa AAAA rodin-rescue"))
         for (sh in listOf("sh", "bash")) { val p = ProcessBuilder(sh, "-n", f.path).redirectErrorStream(true).start(); val o = p.inputStream.bufferedReader().readText(); assertEquals("$sh: $o", 0, p.waitFor()) }

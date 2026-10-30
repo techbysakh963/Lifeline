@@ -24,6 +24,7 @@ import com.rodinrescue.usb.BootLibrary
 import com.rodinrescue.usb.UsbAutoOff
 import com.rodinrescue.setup.*
 import com.rodinrescue.transport.*
+import java.io.File
 import kotlinx.coroutines.*
 
 @kotlinx.serialization.Serializable
@@ -216,11 +217,16 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun startSetupServer(i: UsbIface, pub: String, phoneSerial: String? = null) {
+    private suspend fun startSetupServer(i: UsbIface, pub: String, phoneSerial: String? = null) {
         setupToken = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
         val srv = SetupServer(viewModelScope, { LaptopScript.build(i.phoneIp, setupServer!!.boundPort, setupToken, pub, phoneSerial.takeIf { settings.serialLogin }) }) { c -> viewModelScope.launch { onLaptopCheckin(c) } }
         setupServer?.stop(); setupServer = srv
-        val port = srv.start(i.phoneIp, setupToken)
+        // Under a VPN the laptop reaches the phone only through a root listener ([RootRelay.listenCommand]).
+        val relay = if (NetFix.isVpnActive(ctx)) SetupServer.Relay(
+            openPrivate = { File(ctx.filesDir, "setup.sock").path.let { it to PrivateUnixAcceptor(it) } },
+            listen = RootRelay::listenCommand, kill = RootRelay::killListenersCommand, rootHolds = RootRelay::rootHolds) else null
+        val port = try { withContext(Dispatchers.IO) { srv.start(i.phoneIp, setupToken, relay = relay) } }
+            catch (e: Exception) { slog("✗ Couldn't open the setup port: ${e.message}. Press the button again."); return }
         laptopCommand = "curl -fsSL http://${i.phoneIp}:$port/s/$setupToken | sudo sh"
         waitingForLaptop = true
         slog("✓ Ready. Run the command below on the laptop (any terminal, even a text-mode console).")

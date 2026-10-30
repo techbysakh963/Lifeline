@@ -27,6 +27,9 @@ object TetherAutomation {
             } else null
         }
 
+    /** Back to the same Lifeline screen: a plain `am start` stacked a second one (own view model) on top of the one running setup. */
+    const val BACK_TO_APP = "am start --activity-reorder-to-front -n com.rodinrescue/.MainActivity"
+
     suspend fun enable(log: (String) -> Unit): Boolean {
         if (UsbNet.detect().isNotEmpty()) { log("USB tethering already on"); return true }
         log("Opening tethering settings…")
@@ -40,9 +43,9 @@ object TetherAutomation {
             if (sw.checked) { done = true; break }
             RootShell.run("input tap ${sw.cx} ${sw.cy}"); log("Tapped USB tethering"); done = true; break
         }
-        if (!done) { RootShell.run("am start -n com.rodinrescue/.MainActivity"); return false }
-        repeat(12) { delay(1000); if (UsbNet.detect().isNotEmpty()) { RootShell.run("am start -n com.rodinrescue/.MainActivity"); return true } }
-        RootShell.run("am start -n com.rodinrescue/.MainActivity")
+        if (!done) { RootShell.run(BACK_TO_APP); return false }
+        repeat(12) { delay(1000); if (UsbNet.detect().isNotEmpty()) { RootShell.run(BACK_TO_APP); return true } }
+        RootShell.run(BACK_TO_APP)
         return false
     }
 }
