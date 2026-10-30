@@ -253,6 +253,21 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
         connect()
     }
 
+    /** Settings › Report a bug: what the user sees and can send (see [com.rodinrescue.report.BugReport]). */
+    fun bugReport(): String {
+        val pkg = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0) }.getOrNull()
+        val brain = when (provider) { "claude" -> "Claude (subscription)"; "codex" -> "ChatGPT (subscription)"; "geminicli" -> "Gemini (subscription)"
+            "claudeapi" -> "Claude API"; "openai" -> "OpenAI API"; "gemini" -> "Gemini API"; else -> "DeepSeek API" }
+        return com.rodinrescue.report.BugReport.text(com.rodinrescue.report.BugReport.Info(
+            appVersion = pkg?.versionName ?: "?", appCode = pkg?.longVersionCode ?: 0,
+            device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}", android = android.os.Build.VERSION.RELEASE, sdk = android.os.Build.VERSION.SDK_INT,
+            rootManager = rootManager.takeIf { it != "your root manager" }, rootOk = rootOk,
+            keyboard = kbState.name.lowercase(), serial = serialSupported, bootDrive = bootStatus?.supported,
+            usbLink = tetherOk, vpn = if (!vpnActive) "off" else if (bypassOk) "on, routed around" else "on", connected = connected,
+            aiBrain = "$brain · $providerStatus",
+            recent = setupLog.toList() + listOfNotNull(connState, kbMessage, bootMessage, rescueStatus, builtinError)))
+    }
+
     fun cancelLaptopWait() { setupServer?.stop(); waitingForLaptop = false; laptopCommand = null }
 
     /** After a re-plug the laptop gets a new address: find it and reconnect without touching the laptop again. */

@@ -39,6 +39,7 @@ fun SettingsScreen(vm: RodinViewModel, back: () -> Unit, openStorage: () -> Unit
     val ctx = LocalContext.current
     var support by remember { mutableStateOf(false) }
     var advanced by rememberSaveable { mutableStateOf(false) }
+    var report by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 16.dp)
         .padding(top = 12.dp, bottom = 24.dp + LocalNavSpace.current), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -143,6 +144,7 @@ fun SettingsScreen(vm: RodinViewModel, back: () -> Unit, openStorage: () -> Unit
                     Muted("Version ${appVersion(ctx)} · open source")
                 }
             }
+            LinkRow("Report a bug", "Opens a form on GitHub with a short diagnostic report") { report = vm.bugReport() }
             LinkRow("Source code", REPO_URL.removePrefix("https://")) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(REPO_URL))) }
             Muted("© 2026 techbysakh963 · Apache License 2.0. Copies and derived works must keep this credit and the NOTICE file.")
             Muted("Fonts: Geist, Geist Mono and Unbounded, SIL Open Font License 1.1.", color = Frost.Muted)
@@ -150,6 +152,27 @@ fun SettingsScreen(vm: RodinViewModel, back: () -> Unit, openStorage: () -> Unit
     }
 
     if (support) SupportDialog { support = false }
+    report?.let { text -> BugReportDialog(text) { report = null } }
+}
+
+/** The report is shown in full before anything leaves the phone; GitHub opens with it filled in. */
+@Composable
+private fun BugReportDialog(text: String, close: () -> Unit) {
+    val ctx = LocalContext.current
+    AlertDialog(onDismissRequest = close, containerColor = Frost.Card, shape = RoundedCornerShape(28.dp),
+        title = { Text("Report a bug", style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Muted("This report goes with it. No keys, passwords, conversations or data from the PC. On GitHub, describe what happened and the steps.")
+                TerminalBlock(Modifier.heightIn(max = 280.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState())) { Mono(text) }
+                }
+                Muted("Needs a free GitHub account. No account? Copy it and post it on the Lifeline XDA thread.", color = Frost.Muted)
+            }
+        },
+        confirmButton = { InkButton("Open GitHub", {
+            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.rodinrescue.report.BugReport.issueUrl(text)))) }; close() }) },
+        dismissButton = { FrostOutlineButton("Copy", { copyText(ctx, text); toast(ctx, "Report copied") }) })
 }
 
 /** View / edit / save / reset one mode's AI instructions. The app's safety checks apply whatever the text says. */

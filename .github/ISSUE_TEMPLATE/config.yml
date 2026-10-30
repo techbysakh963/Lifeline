@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/techbysakh963/Lifeline/security/advisories/new
+    about: Report a security issue privately, not in a public issue.
+  - name: Questions and help
+    url: https://xdaforums.com/t/app-root-10-oss-lifeline-an-open-source-root-app-that-repairs-a-broken-pc-over-usb-using-your-own-ai.4806894/
+    about: Ask on the Lifeline thread on XDA.

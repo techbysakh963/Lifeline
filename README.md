@@ -118,6 +118,10 @@ The Android package id stays `com.rodinrescue` (the project's first name), so ex
 
 </details>
 
+## Found a bug?
+
+In the app: **Settings › Report a bug**. It opens the [bug form](https://github.com/techbysakh963/Lifeline/issues/new/choose) with a short diagnostic report (no keys, passwords, conversations or data from the PC). Security problems: please [report them privately](https://github.com/techbysakh963/Lifeline/security/advisories/new).
+
 ## ☕ Buy me a coffee
 
 Lifeline is free and open source. If it brought your machine back, a coffee keeps it going.

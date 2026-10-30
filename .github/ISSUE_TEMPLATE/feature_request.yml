@@ -1,0 +1,24 @@
+name: Idea or feature request
+description: Something Lifeline should do, or do better.
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation and the problem, before the solution. For example "My PC only has USB-C and Lifeline can't…"
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you'd like it to work.
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Your phone and PC (optional)
+      placeholder: "Pixel 8, Android 15, Magisk · Fedora 41 laptop"

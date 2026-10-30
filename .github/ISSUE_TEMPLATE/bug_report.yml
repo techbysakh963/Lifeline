@@ -1,0 +1,92 @@
+name: Bug report
+description: Something in Lifeline doesn't work as it should.
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The fastest way: in Lifeline, open **Settings › Report a bug**. It fills in the diagnostic report below for you.
+        Please don't paste passwords, API keys, tokens or private data from your PC. A security problem? Use [private reporting](https://github.com/techbysakh963/Lifeline/security/advisories/new) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead?
+      placeholder: "I tapped Set up everything for SSH and it stopped at 2/5 USB tethering with an error. I expected the laptop command to appear."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From opening the app, step by step. Does it happen every time?
+      placeholder: |
+        1. Plug the phone into the PC
+        2. Home › Set up everything for SSH
+        3. ...
+        Happens: every time / sometimes / once
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in Lifeline?
+      options:
+        - SSH setup or SSH rescue chat
+        - Keyboard rescue (camera + USB keyboard)
+        - Type on PC / Keys
+        - Boot drive (ISO images)
+        - Lifeline rescue system
+        - USB serial
+        - AI brain (sign-in, install, API key)
+        - Devices / conversations
+        - Settings, app lock, storage
+        - Install, launch or crash
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic report
+      description: From Settings › Report a bug (it contains no keys, passwords, conversations or PC data). If you can't open the app, write the Lifeline version, phone model, Android version and root manager here.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: pc
+    attributes:
+      label: The PC
+      description: Its system and how it was stuck, if it's about a rescue.
+      placeholder: "Ubuntu 24.04 laptop, black screen after an update / Windows 11 desktop, boot loop / any PC in BIOS"
+
+  - type: input
+    id: ai
+    attributes:
+      label: AI brain
+      description: Only if the problem involves the AI.
+      placeholder: "ChatGPT subscription (Codex) / Claude API key / ..."
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, logs or anything else
+      description: Drag screenshots here. For long logs, attach a .txt file.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I'm on the latest Lifeline release, or I said which version above.
+          required: true
+        - label: I searched the existing issues and this isn't one of them.
+          required: true
+        - label: I removed passwords, keys and private data from what I pasted.
+          required: true
