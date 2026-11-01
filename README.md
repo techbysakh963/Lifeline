@@ -9,7 +9,8 @@
 
 <p align="center">
   <a href="https://github.com/techbysakh963/Lifeline/releases"><img alt="Download" src="https://img.shields.io/badge/Download-APK-35E3A1?style=for-the-badge&logo=android&logoColor=0B0D10&labelColor=35E3A1"></a>
-  <img alt="Version 0.7.2 beta" src="https://img.shields.io/badge/v0.7.2-beta-E9EDF1?style=for-the-badge&labelColor=0B0D10">
+  <img alt="Version 0.7.3 beta" src="https://img.shields.io/badge/v0.7.3-beta-E9EDF1?style=for-the-badge&labelColor=0B0D10">
+  <a href="#tested-phones"><img alt="Tested on 2 phones" src="https://img.shields.io/badge/tested_on-2_phones-F5B942?style=for-the-badge&labelColor=0B0D10"></a>
   <img alt="Android 10+" src="https://img.shields.io/badge/Android-10%2B-E9EDF1?style=for-the-badge&labelColor=0B0D10">
   <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-E9EDF1?style=for-the-badge&labelColor=0B0D10">
 </p>
@@ -61,7 +62,20 @@ Gemini and DeepSeek work too.
 - **SSH rescue:** a Linux PC. Keyboard rescue works with any PC: BIOS and boot menus, Linux consoles, Windows recovery.
 - **An AI:** a Claude, ChatGPT or Gemini subscription, or an API key.
 
-Lifeline is in **beta**.
+## Tested phones
+
+> [!IMPORTANT]
+> **Beta: tested on two phones so far.** Lifeline drives the phone's USB hardware directly, and kernels, ROMs and root
+> managers differ from phone to phone, so some features may not work on yours yet. Your report is how they get fixed.
+>
+> | Phone | Android, root | Result |
+> |---|---|---|
+> | **POCO X7 Pro** | HyperOS 3 (Android 16), KernelSU | Everything works: SSH rescue, Keyboard rescue, Type on PC, USB serial, Boot drive |
+> | **Samsung Galaxy S9** | LineageOS 20 (Android 13), Magisk | Everything its kernel supports works: SSH rescue, USB serial, the AI. Its kernel has no USB keyboard or USB drive, so Lifeline hides Keyboard rescue, Type on PC and Boot |
+>
+> **Another phone?** Tell us what works and what doesn't with a
+> [device report](https://github.com/techbysakh963/Lifeline/issues/new?template=device_report.yml), even if it all works.
+> Lifeline will be adjusted for the phones people use.
 
 <details>
 <summary><b>How it works</b></summary>

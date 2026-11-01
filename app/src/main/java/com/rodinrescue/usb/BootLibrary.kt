@@ -68,6 +68,45 @@ true
     fun headScript(image: Image) = "head -c 34816 ${q(image.path)} | base64 -w0"
 
     /**
+     * The live system inside an ISO, by its root folder: which boot word turns saved space on and which label it
+     * looks for. Neither family uses saved space unless that word is on the boot line (their menus leave it out).
+     */
+    enum class Live(val word: String, val label: String) {
+        /** Debian, Kali (live-boot: /live). */
+        DEBIAN("persistence", "persistence"),
+        /** Ubuntu, Mint and other Ubuntu-based systems (casper: /casper). */
+        UBUNTU("persistent", "casper-rw"),
+    }
+
+    /** The ISO 9660 root folder's sector and size, from [head] (the primary volume descriptor at 32 KB), or null. */
+    fun isoRoot(head: ByteArray): Pair<Long, Int>? {
+        if (head.size < 32768 + 190 || head[32768].toInt() != 1 || String(head, 32769, 5, Charsets.US_ASCII) != "CD001") return null
+        fun le(i: Int) = (0..3).fold(0L) { acc, k -> acc or ((head[32768 + i + k].toLong() and 0xFF) shl (8 * k)) }
+        val lba = le(156 + 2); val size = le(156 + 10)
+        return if (lba <= 0 || size !in 1..(1L shl 20)) null else lba to size.toInt()
+    }
+
+    fun rootDirScript(image: Image, root: Pair<Long, Int>) =
+        "dd if=${q(image.path)} bs=2048 skip=${root.first} count=${(root.second + 2047) / 2048} 2>/dev/null | base64 -w0"
+
+    /** [dir]: the ISO's root folder records. /live → Debian family, /casper → Ubuntu family, else null. */
+    fun detectLive(dir: ByteArray): Live? {
+        var i = 0
+        while (i < dir.size) {
+            val len = dir[i].toInt() and 0xFF
+            if (len == 0) { i = (i / 2048 + 1) * 2048; continue }           // records never cross a sector
+            if (i + 33 > dir.size || i + len > dir.size) break
+            val isDir = (dir[i + 25].toInt() and 2) != 0
+            val nameLen = dir[i + 32].toInt() and 0xFF
+            val name = String(dir, i + 33, minOf(nameLen, dir.size - i - 33), Charsets.US_ASCII).substringBefore(';').uppercase()
+            if (isDir && name == "LIVE") return Live.DEBIAN
+            if (isDir && name == "CASPER") return Live.UBUNTU
+            i += len
+        }
+        return null
+    }
+
+    /**
      * Moves [source] (anywhere in the user's storage) into the library. Same storage → a rename, instant even for
      * a 6 GB ISO. Refuses to overwrite. Prints MOVED <name> or an error.
      */
@@ -81,19 +120,31 @@ mv ${q(src)} ${q("$dir/$name")} && echo "MOVED ${'$'}(basename ${q(name)})" || e
 """
     }
 
+    /** GB the phone keeps free for itself when a saved space grows to its full size. */
+    const val KEEP_FREE_GB = 2
+    /** ext4's largest file with 4 KiB blocks (16 TiB). */
+    const val MAX_SAVED_GB = 16 * 1024
+
     /**
-     * Creates [image]'s saved space: a sparse ext4 file of [gb] GB labelled "persistence" with persistence.conf
-     * "/ union" — what Debian/Kali/Ubuntu live-boot looks for on any attached drive. Prints SAVED_OK.
+     * The largest saved space for [availableBytes] free on the phone, in whole GB. The file is sparse, so this is how
+     * far it may grow, not what it takes now; [KEEP_FREE_GB] stays free so a full saved space can't fill the phone.
      */
-    fun createSavedScript(image: Image, gb: Int): String {
-        require(gb in 1..256) { "size out of range" }
+    fun maxSavedGb(availableBytes: Long): Int = ((availableBytes shr 30) - KEEP_FREE_GB).coerceIn(0, MAX_SAVED_GB.toLong()).toInt()
+
+    /**
+     * Creates [image]'s saved space: a sparse ext4 file of [gb] GB labelled for its [live] family ("persistence" with
+     * persistence.conf "/ union" for Debian/Kali, "casper-rw" for Ubuntu/Mint; the conf is harmless there). Prints SAVED_OK. Lazy init leaves
+     * the inode tables and journal unwritten (a sparse file reads them as zeros), so even a large one takes ~1 MB now.
+     */
+    fun createSavedScript(image: Image, gb: Int, live: Live = Live.DEBIAN): String {
+        require(gb in 1..MAX_SAVED_GB) { "size out of range" }
         val f = image.savedPath; val sd = "${image.dir}/.saved"
         return """mkdir -p ${q(sd)} && chown 1023:1023 ${q(image.dir)} ${q(sd)} 2>/dev/null || true
 [ -d ${q(sd)} ] || { echo ERR mkdir; exit 1; }
 [ -e ${q(f)} ] && { echo ERR exists; exit 1; }
 T=${'$'}(mktemp -d) || { echo ERR tmp; exit 1; }
 printf '/ union\n' > "${'$'}T/persistence.conf"
-truncate -s ${gb}G ${q(f)} && mke2fs -q -t ext4 -L persistence -d "${'$'}T" ${q(f)} >/dev/null 2>&1 \
+truncate -s ${gb}G ${q(f)} && mke2fs -q -t ext4 -E lazy_itable_init=1,lazy_journal_init=1 -L ${live.label} -d "${'$'}T" ${q(f)} >/dev/null 2>&1 \
   && { rm -rf "${'$'}T"; chown 1023:1023 ${q(f)} 2>/dev/null; echo SAVED_OK; } || { rm -rf "${'$'}T"; rm -f ${q(f)}; echo ERR mke2fs; }
 """
     }

@@ -38,6 +38,13 @@ object BootController {
         return BootLibrary.detectMode(head)
     }
 
+    /** The live system inside [img] (Debian or Ubuntu family), or null when it has none that keeps files. */
+    suspend fun live(img: BootLibrary.Image): BootLibrary.Live? {
+        fun b64(cmd: String) = runCatching { java.util.Base64.getDecoder().decode(cmd) }.getOrDefault(ByteArray(0))
+        val root = BootLibrary.isoRoot(b64(su(BootLibrary.headScript(img)).output.trim())) ?: return null
+        return BootLibrary.detectLive(b64(su(BootLibrary.rootDirScript(img, root)).output.trim()))
+    }
+
     /** Shows [img] to the PC. Returns null on success, or a message the user can act on. */
     suspend fun start(img: BootLibrary.Image, mode: BootLibrary.Mode, withSaved: Boolean): String? = lock.withLock {
         // Leftover of the removed Lifeline boot menu (debug builds of 2026-10-16 kept its 10 MB drive here).
@@ -63,8 +70,13 @@ object BootController {
 
     suspend fun stop(): String = lock.withLock { su(RescueDrive.disableScript(), 45).output }
 
-    suspend fun createSaved(img: BootLibrary.Image, gb: Int): String? {
-        val out = su(BootLibrary.createSavedScript(img, gb), 120).output
+    /** Free bytes on the phone's storage, where the library lives (/data/media is on /data). */
+    fun freeBytes(): Long = android.os.StatFs(android.os.Environment.getDataDirectory().path).availableBytes
+
+    suspend fun createSaved(img: BootLibrary.Image, gb: Int, live: BootLibrary.Live): String? {
+        val max = BootLibrary.maxSavedGb(freeBytes())
+        if (gb > max) return if (max < 1) "Not enough free space on the phone for saved space." else "The phone has room for up to $max GB of saved space now."
+        val out = su(BootLibrary.createSavedScript(img, gb, live), 120).output
         return if ("SAVED_OK" in out) null else when {
             "ERR exists" in out -> "This image already has saved space."
             else -> "Couldn't create the saved space (${out.lines().lastOrNull { it.isNotBlank() }})."

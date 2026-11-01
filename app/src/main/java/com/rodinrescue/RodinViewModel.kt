@@ -1034,6 +1034,8 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
     var bootImages by mutableStateOf<List<BootLibrary.Image>>(emptyList()); private set
     /** Detected (or user-chosen) mode per image name. */
     val bootModes = androidx.compose.runtime.mutableStateMapOf<String, BootLibrary.Mode>()
+    /** The live system in each image (by name); a name maps to null when it has none that keeps files. */
+    val bootLive = androidx.compose.runtime.mutableStateMapOf<String, BootLibrary.Live?>()
     var bootBusy by mutableStateOf<String?>(null); private set      // what's running, for the UI
     var bootMessage by mutableStateOf(""); private set
     var bootCopy by mutableStateOf<Pair<Long, Long>?>(null); private set
@@ -1046,6 +1048,7 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
         bootReadStatus()
         bootImages = BootController.list()
         for (img in bootImages) if (img.name !in bootModes) bootModes[img.name] = BootController.mode(img)
+        for (img in bootImages) if (!bootLive.containsKey(img.name)) bootLive[img.name] = BootController.live(img)
     }
     fun bootRefresh() = bootRun("Loading…") { bootReload() }
     fun bootSetMode(img: BootLibrary.Image, mode: BootLibrary.Mode) { bootModes[img.name] = mode }
@@ -1060,14 +1063,16 @@ class RodinViewModel(app: Application) : AndroidViewModel(app) {
         bootMessage = ""; rememberUsbMode()
         val err = BootController.start(img, bootModes[img.name] ?: BootLibrary.Mode.DISK, withSaved)
         bootReload()
-        bootMessage = err ?: "The PC now sees a USB drive. Restart it and pick the USB drive in its boot menu (often F12, F11, F8 or Esc)."
+        bootMessage = err ?: ("The PC now sees a USB drive. Restart it and pick the USB drive in its boot menu (often F12, F11, F8 or Esc)." +
+            (bootLive[img.name]?.takeIf { withSaved && img.savedBytes != null }?.let { " Then add ${it.word} to the boot line, as shown above, or the saved space isn't used." } ?: ""))
     }
     fun bootStop() = bootRun("Stopping…") { BootController.stop(); bootReload(); bootMessage = "The PC no longer sees the drive."; restoreUsbModeLater() }
     private suspend fun bootReadStatus() { bootStatus = BootController.status() }
     /** Home's status bar: just the drive state, without listing the library. */
     fun bootStatusRefresh() = viewModelScope.launch { if (bootBusy == null) bootReadStatus() }
     fun bootCreateSaved(img: BootLibrary.Image, gb: Int) = bootRun("Creating saved space…") {
-        bootMessage = BootController.createSaved(img, gb) ?: "Saved space ready (${gb} GB). It's used when you boot with it switched on."
+        val live = bootLive[img.name] ?: run { bootMessage = "This image has no live system that can keep files."; return@bootRun }
+        bootMessage = BootController.createSaved(img, gb, live) ?: "Saved space ready (${gb} GB). To use it, boot with it switched on and add ${live.word} to the boot line."
         bootReload()
     }
     fun bootDelete(path: String, what: String) = bootRun("Deleting…") {

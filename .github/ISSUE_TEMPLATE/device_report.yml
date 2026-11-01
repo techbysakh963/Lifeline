@@ -1,0 +1,55 @@
+name: Device report
+description: Tell us how Lifeline works on your phone, even if everything works.
+title: "[Device] "
+labels: ["device-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lifeline has been tested on a POCO X7 Pro and a Galaxy S9. Every phone's kernel and ROM is a little different, so reports from other phones are how Lifeline gets fixed for them.
+        The easiest way to fill in the phone details: in Lifeline, open **Settings › Report a bug** and copy the diagnostic report below. Don't paste passwords, API keys or private data.
+
+  - type: input
+    id: phone
+    attributes:
+      label: Phone
+      description: Model, ROM and root manager.
+      placeholder: "Pixel 7, stock Android 15, Magisk 28"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works
+      description: Tick what you tried and it worked.
+      options:
+        - label: SSH rescue (Set up everything, chat with the PC)
+        - label: Keyboard rescue
+        - label: Type on PC
+        - label: USB serial
+        - label: Boot drive (the PC boots from the phone)
+        - label: Saved space on the Boot drive (files stay after a reboot)
+        - label: AI brain (sign-in or API key, a reply in the chat)
+
+  - type: textarea
+    id: broken
+    attributes:
+      label: What doesn't work
+      description: What you tried, what happened, and what the app said. Leave empty if everything worked.
+      placeholder: "Boot drive: the PC doesn't see the phone as a disk. Keyboard rescue is hidden."
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic report
+      description: From Settings › Report a bug. It contains no keys, passwords, conversations or PC data.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: pc
+    attributes:
+      label: The PC you tested with
+      placeholder: "Ubuntu 24.04 laptop / Windows 11 desktop / any PC in BIOS"

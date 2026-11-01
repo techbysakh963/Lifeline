@@ -65,11 +65,50 @@ class BootLibraryTest {
         assertTrue(sh(BootLibrary.createSavedScript(img, 1)).contains("SAVED_OK"))
         val f = File(img.savedPath)
         assertEquals(1L shl 30, f.length())                                  // 1 GB, sparse
+        assertTrue(sh("du -k '${f.path}'").trim().substringBefore('\t').toLong() < 8 * 1024)   // lazy init: barely any real space
         val info = sh("dumpe2fs -h '${f.path}' 2>/dev/null | grep -i 'volume name'")
         assertTrue(info, info.contains("persistence"))
         assertEquals("/ union", sh("debugfs -R 'cat /persistence.conf' '${f.path}' 2>/dev/null").trim())
         assertTrue(sh(BootLibrary.createSavedScript(img, 1)).contains("ERR exists"))   // never overwrites saved data
         assertThrows(IllegalArgumentException::class.java) { BootLibrary.createSavedScript(img, 0) }
         assertThrows(IllegalArgumentException::class.java) { BootLibrary.deleteScript("/etc/passwd", dir.path) }
+    }
+    @Test fun savedSpaceCanGrowToThePhonesFreeSpaceMinusAMargin() {
+        val gb = 1L shl 30
+        assertEquals(398, BootLibrary.maxSavedGb(400 * gb + 123))             // whole GB, 2 GB stay free
+        assertEquals(0, BootLibrary.maxSavedGb(gb))                            // nearly full phone: none
+        assertEquals(BootLibrary.MAX_SAVED_GB, BootLibrary.maxSavedGb(Long.MAX_VALUE))
+        BootLibrary.createSavedScript(BootLibrary.Image("a.iso", 1, null), 500) // over the old 256 limit is fine
+        assertThrows(IllegalArgumentException::class.java) { BootLibrary.createSavedScript(BootLibrary.Image("a.iso", 1, null), BootLibrary.MAX_SAVED_GB + 1) }
+    }
+    /** A small real ISO 9660 image with [dirs] in its root, made by xorriso. */
+    private fun iso(vararg dirs: String): BootLibrary.Image {
+        val root = Files.createTempDirectory("isoroot").toFile()
+        for (d in dirs) File(root, d).apply { mkdirs(); File(this, "x").writeText("x") }
+        File(root, "README.TXT").writeText("hi")
+        val lib = Files.createTempDirectory("lib").toFile()
+        sh("xorriso -as mkisofs -quiet -R -J -o '${lib.path}/t.iso' '${root.path}'")
+        return BootLibrary.Image("t.iso", File(lib, "t.iso").length(), null, lib.path)
+    }
+
+    private fun liveOf(img: BootLibrary.Image): BootLibrary.Live? {
+        val dec = java.util.Base64.getDecoder()
+        val root = BootLibrary.isoRoot(dec.decode(sh(BootLibrary.headScript(img)).trim())) ?: return null
+        return BootLibrary.detectLive(dec.decode(sh(BootLibrary.rootDirScript(img, root)).trim()))
+    }
+
+    @Test fun findsTheLiveSystemFromTheIsoRootFolder() {
+        assumeTrue("needs xorriso", listOf("/usr/bin/xorriso", "/bin/xorriso").any { File(it).exists() })
+        assertEquals(BootLibrary.Live.DEBIAN, liveOf(iso("boot", "live", "pool")))
+        assertEquals(BootLibrary.Live.UBUNTU, liveOf(iso("boot", "casper", "pool")))
+        assertNull(liveOf(iso("boot", "install", "sources")))                 // installers, Windows: no saved space
+        assertNull(BootLibrary.isoRoot(ByteArray(40000)))                      // not ISO 9660
+    }
+
+    @Test fun ubuntuSavedSpaceIsLabelledCasperRw() {
+        assumeTrue("needs mke2fs", listOf("/usr/sbin/mke2fs", "/sbin/mke2fs").any { File(it).exists() })
+        val img = BootLibrary.Image("mint.iso", 1, null, Files.createTempDirectory("lib").toFile().path)
+        assertTrue(sh(BootLibrary.createSavedScript(img, 1, BootLibrary.Live.UBUNTU)).contains("SAVED_OK"))
+        assertTrue(sh("dumpe2fs -h '${img.savedPath}' 2>/dev/null | grep -i 'volume name'").contains("casper-rw"))
     }
 }

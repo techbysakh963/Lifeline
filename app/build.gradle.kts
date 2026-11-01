@@ -15,8 +15,8 @@ android {
         applicationId = "com.rodinrescue"
         minSdk = 29
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.7.2"
+        versionCode = 12
+        versionName = "0.7.3"
         // Built-in Ubuntu (PRoot) is arm64-only; both test phones are arm64.
         ndk.abiFilters += "arm64-v8a"
     }

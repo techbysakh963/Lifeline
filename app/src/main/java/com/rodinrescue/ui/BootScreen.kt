@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.rodinrescue.RodinViewModel
 import com.rodinrescue.usb.BootLibrary
 import com.rodinrescue.usb.BootLibrary.Mode
+import kotlin.math.roundToInt
 
 /**
  * Boot tab: the phone as a bootable USB drive. Images live in a visible folder (Internal storage › Lifeline › Boot);
@@ -59,6 +60,8 @@ fun BootScreen(vm: RodinViewModel) {
                     }
                     Badge("On", Tone.Good, dot = true)
                 }
+                val name = on.image?.substringAfterLast('/')
+                if (on.writable != null) vm.bootLive[name]?.let { SavedSpaceSteps(it, name.orEmpty()) }
                 Muted("Restart the PC and choose the USB drive in its boot menu (often F12, F11, F8 or Esc right after power-on). Stop the drive before unplugging if it's writing to saved space.", color = Frost.OnInkMuted)
                 StopButton(if (vm.bootBusy == "Stopping…") "Stopping…" else "Stop the drive", { vm.bootStop() }, Modifier.fillMaxWidth())
             }
@@ -90,6 +93,7 @@ private fun ImageCard(vm: RodinViewModel, img: BootLibrary.Image, active: Boolea
     var useSaved by remember(img.name, img.savedBytes) { mutableStateOf(img.savedBytes != null) }
     var addSaved by remember { mutableStateOf(false) }
     var gb by remember { mutableFloatStateOf(4f) }
+    var maxGb by remember { mutableIntStateOf(0) }
     var confirm by remember { mutableStateOf<Pair<String, String>?>(null) }   // path to what
     val mode = vm.bootModes[img.name] ?: Mode.DISK
 
@@ -118,16 +122,26 @@ private fun ImageCard(vm: RodinViewModel, img: BootLibrary.Image, active: Boolea
             }
             if (mode == Mode.CD) Muted("For ISOs that only work as a CD, like Windows installers. If the PC doesn't offer it, try USB disk.", color = Frost.Muted)
 
+            val live = vm.bootLive[img.name]
             if (img.savedBytes != null) {
                 FrostSwitch(useSaved, { useSaved = it }, "Use saved space (${size(img.savedBytes)})")
+                if (useSaved && live != null) Muted("Works when you add ${live.word} at the PC's boot menu; the steps show once it's on the PC.", color = Frost.Muted)
+            } else if (live == null) {
+                Muted("No saved space: this isn't a live system. It works with Debian, Kali, Ubuntu and Mint live images.", color = Frost.Muted)
             } else if (!addSaved) {
-                GhostButton("Add saved space…", { addSaved = true }, enabled = !busy)
+                GhostButton("Add saved space…", {
+                    maxGb = BootLibrary.maxSavedGb(com.rodinrescue.usb.BootController.freeBytes())
+                    gb = gb.coerceIn(1f, maxGb.coerceAtLeast(1).toFloat()); addSaved = true
+                }, enabled = !busy)
+            } else if (maxGb < 1) {
+                Muted("Not enough free space on the phone for saved space. Free up some space, then try again.", color = Frost.Bad)
+                GhostButton("Close", { addSaved = false })
             } else {
-                Text("Saved space: ${gb.toInt()} GB", style = MaterialTheme.typography.titleSmall)
-                Muted("Live systems keep files and settings across reboots. Uses phone storage only as it fills.")
-                Slider(gb, { gb = it }, valueRange = 1f..64f, steps = 62)
+                Text("Saved space: ${gb.roundToInt()} GB", style = MaterialTheme.typography.titleSmall)
+                Muted("Live systems keep files and settings across reboots. Uses phone storage only as it fills; up to $maxGb GB fits now.")
+                if (maxGb > 1) Slider(gb, { gb = it.roundToInt().toFloat() }, valueRange = 1f..maxGb.toFloat())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    InkButton("Create", { vm.bootCreateSaved(img, gb.toInt()); addSaved = false }, Modifier.weight(1f), enabled = !busy)
+                    InkButton("Create", { vm.bootCreateSaved(img, gb.roundToInt()); addSaved = false }, Modifier.weight(1f), enabled = !busy)
                     GhostButton("Cancel", { addSaved = false })
                 }
             }
@@ -144,6 +158,17 @@ private fun ImageCard(vm: RodinViewModel, img: BootLibrary.Image, active: Boolea
             confirmButton = { InkButton("Delete", { vm.bootDelete(path, what.replaceFirstChar { it.uppercase() }); confirm = null }) },
             dismissButton = { FrostOutlineButton("Cancel", { confirm = null }) })
     }
+}
+
+/** How to turn saved space on at the PC's boot menu: its live system ignores it unless [live]'s word is on the boot line. */
+@Composable
+private fun SavedSpaceSteps(live: BootLibrary.Live, image: String) {
+    Text("To use the saved space", style = MaterialTheme.typography.titleSmall, color = Color.White)
+    if (image.contains("kali", ignoreCase = true)) Muted("In Kali's menu, pick Live USB Persistence. Or:", color = Frost.OnInkMuted)
+    Muted("1. In the PC's menu for this system, highlight the first entry and press e (on an old-style menu: Tab).\n" +
+        "2. At the end of the line that starts with linux (old-style: the line shown), type a space and ${live.word}\n" +
+        "3. Press Ctrl+X or F10 to start (old-style: Enter).\n" +
+        "Do this every boot; without it, nothing is saved.", color = Frost.OnInkMuted)
 }
 
 private fun size(b: Long): String = when {
